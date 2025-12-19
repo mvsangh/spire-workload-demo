@@ -363,12 +363,23 @@ Date: 2025-12-19
 File Created: deploy/apps/postgres/spiffe-helper-configmap.yaml
 Verification: kubectl apply --dry-run=client -o yaml
 Result: ✓ Valid YAML, ConfigMap created successfully
-Configuration:
+
+Initial Configuration (deprecated syntax):
   - agentAddress: /run/spire/agent-sockets/spire-agent.sock
   - certDir: /spiffe-certs
-  - svidFileName: svid.pem
-  - svidKeyFileName: svid_key.pem
-  - svidBundleFileName: svid_bundle.pem
+  - svidFileName, svidKeyFileName, svidBundleFileName
+
+Updated Configuration (snake_case + permissions):
+  - agent_address = "/run/spire/agent-sockets/spire-agent.sock"
+  - cert_dir = "/spiffe-certs"
+  - svid_file_name = "svid.pem"
+  - svid_key_file_name = "svid_key.pem"
+  - svid_bundle_file_name = "svid_bundle.pem"
+  - cert_file_mode = 0644
+  - key_file_mode = 0600  # CRITICAL for PostgreSQL SSL
+
+Fix Applied: Added key_file_mode = 0600 to resolve PostgreSQL
+"Permission denied" error for private key file.
 ```
 
 ---
@@ -434,21 +445,34 @@ Date: 2025-12-19
 File Created: deploy/apps/postgres/statefulset.yaml
 Verification: kubectl apply --dry-run=client
 Result: ✓ statefulset.apps/postgres created (dry run)
-Architecture:
+
+Final Architecture (after fixes):
+  - Native Sidecar: spiffe-helper (restartPolicy: Always) - K8s 1.28+ feature
+    - Runs BEFORE init containers, keeps running alongside main containers
+    - securityContext: runAsUser: 999, runAsGroup: 999 (postgres user)
   - InitContainer: wait-for-certs (busybox:1.36) - waits for certificates
-  - Container 1: postgres (postgres:15) - database with SSL enabled
-  - Container 2: spiffe-helper (ghcr.io/spiffe/spiffe-helper:0.8.0) - fetches SVID
+  - Container: postgres (postgres:15) - database with SSL enabled
+
+Key Fixes Applied:
+  1. Changed from regular sidecar to native sidecar (restartPolicy: Always)
+  2. Added securityContext to run spiffe-helper as postgres user (UID 999)
+     This ensures certificate files are owned by postgres:postgres
+
 Volumes:
   - spiffe-certs: emptyDir (Memory) - shared cert storage
   - spiffe-helper-config: ConfigMap - spiffe-helper.conf
   - ssl-config: ConfigMap - pg_hba.conf
   - init-sql: ConfigMap - database init
   - spire-agent-socket: hostPath - SPIRE agent
-PostgreSQL SSL Args:
-  - ssl=on
-  - ssl_cert_file=/spiffe-certs/svid.pem
-  - ssl_key_file=/spiffe-certs/svid_key.pem
-  - ssl_ca_file=/spiffe-certs/svid_bundle.pem
+
+Live Test Results (2025-12-19):
+  - Pod Status: 2/2 Running ✓
+  - SSL Status: SHOW ssl; → on ✓
+  - Certificate Permissions:
+    - svid.pem: -rw-r--r-- postgres:postgres (0644) ✓
+    - svid_key.pem: -rw------- postgres:postgres (0600) ✓
+    - svid_bundle.pem: -rw-r--r-- postgres:postgres (0644) ✓
+  - Database: SELECT COUNT(*) FROM orders; → 5 rows ✓
 ```
 
 ---
@@ -527,6 +551,26 @@ Functions Implemented:
   - verify_postgres(): Check DB, table, and orders count
   - verify_postgres_spiffe_helper(): Check container and cert files
   - verify_postgres_ssl(): Check SSL status via SHOW ssl
+
+Live Test Execution (2025-12-19):
+  Steps Performed:
+    1. ./scripts/cleanup.sh - Deleted existing cluster
+    2. ./scripts/01-create-cluster.sh - Created kind cluster (K8s v1.34.0)
+    3. ./scripts/02-deploy-spire-server.sh - SPIRE server deployed
+    4. ./scripts/03-deploy-spire-agent.sh - SPIRE agent attested
+    5. Manual: kubectl exec spire-server entry create (registered postgres SPIFFE ID)
+    6. kubectl apply -k deploy/apps/postgres/ - PostgreSQL deployed
+
+  Issues Encountered & Resolved:
+    - Issue 1: "PermissionDenied: no identity issued"
+      Cause: Parent ID mismatch in SPIRE registration
+      Fix: Re-registered entry with correct agent SPIFFE ID
+
+    - Issue 2: "could not load private key: Permission denied"
+      Cause: spiffe-helper wrote files as root, PostgreSQL runs as postgres
+      Fix: Added securityContext (runAsUser: 999) + key_file_mode = 0600
+
+  Final Result: ✓ PostgreSQL 2/2 Running with SSL enabled
 ```
 
 ---
