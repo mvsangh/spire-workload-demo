@@ -12,25 +12,17 @@ data:
   # Pattern 2: spiffe-helper writes SVID certificates for PostgreSQL SSL
   spiffe-helper.conf: |
     # SPIRE Agent Workload API socket path
-    agentAddress = "/run/spire/agent-sockets/spire-agent.sock"
+    agent_address = "/run/spire/agent-sockets/spire-agent.sock"
 
     # Directory where certificates will be written
-    # PostgreSQL will read server certificates from here
-    certDir = "/spiffe-certs"
+    cert_dir = "/spiffe-certs"
 
-    # Certificate file names matching PostgreSQL SSL configuration
-    # svid.pem - Server certificate (ssl_cert_file)
-    # svid_key.pem - Server private key (ssl_key_file)
-    # svid_bundle.pem - CA bundle for client verification (ssl_ca_file)
-    svidFileName = "svid.pem"
-    svidKeyFileName = "svid_key.pem"
-    svidBundleFileName = "svid_bundle.pem"
+    # Certificate file names
+    svid_file_name = "svid.pem"
+    svid_key_file_name = "svid_key.pem"
+    svid_bundle_file_name = "svid_bundle.pem"
 
-    # Command to run after certificate renewal (optional)
-    # PostgreSQL will automatically reload SSL certs on SIGHUP
-    # Note: We don't send signal directly - PostgreSQL watches file changes
-    renewSignal = ""
-
-    # No command to execute after renewal
-    cmd = ""
-    cmdArgs = ""
+    # File permissions (octal) - CRITICAL for PostgreSQL
+    # PostgreSQL requires private key to be mode 0600
+    cert_file_mode = 0644
+    key_file_mode = 0600
