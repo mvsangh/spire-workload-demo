@@ -1,0 +1,13 @@
+# SPIRE Bundle ConfigMap
+# Empty ConfigMap that will be populated by the k8sbundle notifier
+# with the SPIRE trust bundle for workloads to consume
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-bundle
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/component: bundle
+data: {}

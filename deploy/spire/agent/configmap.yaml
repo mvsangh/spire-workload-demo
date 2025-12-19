@@ -1,0 +1,56 @@
+# SPIRE Agent ConfigMap
+# Contains the agent.conf configuration file
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-config
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/component: agent
+data:
+  agent.conf: |
+    agent {
+      data_dir = "/run/spire/agent-data"
+      log_level = "DEBUG"
+      trust_domain = "example.org"
+      server_address = "spire-server.spire-system.svc.cluster.local"
+      server_port = "8081"
+
+      # Workload API socket path - workloads connect here
+      socket_path = "/run/spire/agent-sockets/spire-agent.sock"
+
+      # Trust bundle from SPIRE server's k8sbundle notifier
+      trust_bundle_path = "/run/spire/bundle/bundle.crt"
+    }
+
+    plugins {
+      # Node attestation using Kubernetes Projected Service Account Token
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          cluster = "demo-cluster"
+        }
+      }
+
+      # Workload attestation using Kubernetes metadata
+      WorkloadAttestor "k8s" {
+        plugin_data {
+          # Skip kubelet verification for kind cluster
+          skip_kubelet_verification = true
+        }
+      }
+
+      # Key management in memory
+      KeyManager "memory" {
+        plugin_data {}
+      }
+    }
+
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+      live_path = "/live"
+      ready_path = "/ready"
+    }

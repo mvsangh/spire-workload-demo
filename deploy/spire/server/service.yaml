@@ -1,0 +1,21 @@
+# SPIRE Server Service
+# Exposes SPIRE server for agent connections
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: spire-server
+  namespace: spire-system
+  labels:
+    app: spire-server
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/component: server
+spec:
+  type: ClusterIP
+  selector:
+    app: spire-server
+  ports:
+    - name: grpc
+      port: 8081
+      targetPort: 8081
+      protocol: TCP

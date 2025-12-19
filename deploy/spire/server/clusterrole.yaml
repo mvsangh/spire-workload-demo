@@ -1,0 +1,27 @@
+# SPIRE Server ClusterRole
+# Permissions required for SPIRE server to operate in Kubernetes
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-server-cluster-role
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/component: server
+rules:
+  # Required for node attestation (k8s_psat)
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  # Required for validating service account tokens
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+  # Required for k8s workload attestation
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # Required for k8sbundle notifier to publish trust bundle
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "update", "patch"]

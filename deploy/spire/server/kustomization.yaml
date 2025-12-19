@@ -1,0 +1,21 @@
+# Kustomization for SPIRE Server
+# Bundles all SPIRE server resources
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: spire-system
+
+resources:
+  - serviceaccount.yaml
+  - clusterrole.yaml
+  - clusterrolebinding.yaml
+  - configmap.yaml
+  - bundle-configmap.yaml
+  - statefulset.yaml
+  - service.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: spire-demo
+    includeSelectors: false

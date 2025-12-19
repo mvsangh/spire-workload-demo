@@ -1,0 +1,76 @@
+# SPIRE Server ConfigMap
+# Contains the server.conf configuration file
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-server-config
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/component: server
+data:
+  server.conf: |
+    server {
+      bind_address = "0.0.0.0"
+      bind_port = "8081"
+      trust_domain = "example.org"
+      data_dir = "/run/spire/data"
+      log_level = "DEBUG"
+      socket_path = "/tmp/spire-server/private/api.sock"
+
+      # CA configuration
+      ca_subject {
+        country = ["US"]
+        organization = ["SPIRE Demo"]
+        common_name = "example.org"
+      }
+
+      # Short TTL for demo to show rotation
+      default_x509_svid_ttl = "1h"
+      ca_ttl = "24h"
+    }
+
+    plugins {
+      # SQLite datastore (sufficient for demo)
+      DataStore "sql" {
+        plugin_data {
+          database_type = "sqlite3"
+          connection_string = "/run/spire/data/datastore.sqlite3"
+        }
+      }
+
+      # Key management on disk
+      KeyManager "disk" {
+        plugin_data {
+          keys_path = "/run/spire/data/keys.json"
+        }
+      }
+
+      # Kubernetes Projected Service Account Token attestation
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          clusters = {
+            "demo-cluster" = {
+              service_account_allow_list = ["spire-system:spire-agent"]
+            }
+          }
+        }
+      }
+
+      # Notifier for bundle updates (optional but useful)
+      Notifier "k8sbundle" {
+        plugin_data {
+          namespace = "spire-system"
+          config_map = "spire-bundle"
+        }
+      }
+    }
+
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+      live_path = "/live"
+      ready_path = "/ready"
+    }

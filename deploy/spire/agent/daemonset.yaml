@@ -1,0 +1,112 @@
+# SPIRE Agent DaemonSet
+# Runs on every node to provide workload identity
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spire-agent
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/component: agent
+spec:
+  selector:
+    matchLabels:
+      app: spire-agent
+  template:
+    metadata:
+      labels:
+        app: spire-agent
+        app.kubernetes.io/name: spire-agent
+        app.kubernetes.io/component: agent
+    spec:
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccountName: spire-agent
+
+      initContainers:
+        # Create socket directory with correct permissions
+        - name: init-socket-dir
+          image: busybox:1.36
+          command: ['sh', '-c', 'mkdir -p /run/spire/agent-sockets && chmod 777 /run/spire/agent-sockets']
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/agent-sockets
+          securityContext:
+            runAsUser: 0
+
+      containers:
+        - name: spire-agent
+          image: ghcr.io/spiffe/spire-agent:1.9.6
+          args:
+            - "-config"
+            - "/run/spire/config/agent.conf"
+          ports:
+            - containerPort: 8080
+              name: health
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          volumeMounts:
+            - name: spire-config
+              mountPath: /run/spire/config
+              readOnly: true
+            - name: spire-bundle
+              mountPath: /run/spire/bundle
+              readOnly: true
+            - name: spire-agent-socket
+              mountPath: /run/spire/agent-sockets
+            - name: spire-agent-data
+              mountPath: /run/spire/agent-data
+            - name: spire-token
+              mountPath: /var/run/secrets/tokens
+          securityContext:
+            runAsUser: 0
+            privileged: true
+
+      volumes:
+        - name: spire-config
+          configMap:
+            name: spire-agent-config
+
+        # Trust bundle from SPIRE server (via k8sbundle notifier)
+        - name: spire-bundle
+          configMap:
+            name: spire-bundle
+
+        # Host path for workload API socket - workloads mount this
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/agent-sockets
+            type: DirectoryOrCreate
+
+        # Agent data directory
+        - name: spire-agent-data
+          emptyDir: {}
+
+        # Projected service account token for k8s_psat attestation
+        - name: spire-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: spire-agent
+                  expirationSeconds: 7200
+                  audience: spire-server
