@@ -87,10 +87,11 @@ deploy/
 # Automation Scripts
 scripts/
 ├── 01-create-cluster.sh
-├── 02-deploy-spire.sh
-├── 03-deploy-apps.sh
-├── 04-register-entries.sh
-├── demo-all.sh          # One-command full setup
+├── 02-deploy-spire-server.sh   # SPIRE Server only
+├── 03-deploy-spire-agent.sh    # SPIRE Agent only
+├── 04-deploy-apps.sh
+├── 05-register-entries.sh
+├── demo-all.sh                 # One-command full setup
 └── cleanup.sh
 
 # Container Images
