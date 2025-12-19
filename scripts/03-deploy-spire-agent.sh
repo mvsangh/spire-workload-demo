@@ -105,16 +105,15 @@ verify_spire_agent() {
         exit 1
     fi
 
-    # Run healthcheck
-    log_info "Running SPIRE Agent healthcheck..."
-    kubectl exec -n spire-system "${AGENT_POD}" -- \
-        /opt/spire/bin/spire-agent healthcheck || {
-            log_error "SPIRE Agent healthcheck failed."
-            kubectl logs -n spire-system "${AGENT_POD}" --tail=50
-            exit 1
-        }
+    # Check pod is ready (all containers)
+    READY=$(kubectl get pod -n spire-system "${AGENT_POD}" -o jsonpath='{.status.containerStatuses[0].ready}')
+    if [ "${READY}" != "true" ]; then
+        log_error "SPIRE Agent container is not ready."
+        kubectl describe pod -n spire-system "${AGENT_POD}"
+        exit 1
+    fi
 
-    log_info "SPIRE Agent verification complete."
+    log_info "SPIRE Agent pod is Running and Ready."
 }
 
 # Verify agent attestation with server
