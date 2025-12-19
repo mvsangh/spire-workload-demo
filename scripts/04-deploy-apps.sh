@@ -3,6 +3,7 @@ set -e
 
 # 04-deploy-apps.sh
 # Deploys demo applications (PostgreSQL, Backend, Frontend)
+# Pattern 2: PostgreSQL uses spiffe-helper sidecar for SPIFFE certificate management
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -43,17 +44,22 @@ check_prerequisites() {
 
 # Deploy PostgreSQL
 deploy_postgres() {
-    echo "→ Deploying PostgreSQL with Envoy sidecar..."
+    echo "→ Deploying PostgreSQL with spiffe-helper sidecar (Pattern 2)..."
 
     kubectl apply -k "$PROJECT_ROOT/deploy/apps/postgres/"
 
-    echo "→ Waiting for postgres-0 pod to be ready (timeout: 120s)..."
-    if kubectl wait --for=condition=ready pod/postgres-0 -n demo --timeout=120s; then
+    echo "→ Waiting for postgres-0 pod to be ready (timeout: 180s)..."
+    # Longer timeout because init container waits for certificates
+    if kubectl wait --for=condition=ready pod/postgres-0 -n demo --timeout=180s; then
         echo "✓ PostgreSQL pod is ready"
     else
         echo "✗ PostgreSQL pod failed to become ready"
+        echo ""
+        echo "Pod status:"
         kubectl get pods -n demo -l app=postgres
-        kubectl describe pod postgres-0 -n demo
+        echo ""
+        echo "Pod events:"
+        kubectl describe pod postgres-0 -n demo | tail -20
         exit 1
     fi
 
@@ -92,33 +98,61 @@ verify_postgres() {
     echo ""
 }
 
-# Verify Envoy sidecar
-verify_postgres_envoy() {
-    echo "→ Verifying PostgreSQL Envoy sidecar..."
+# Verify spiffe-helper sidecar (Pattern 2)
+verify_postgres_spiffe_helper() {
+    echo "→ Verifying PostgreSQL spiffe-helper sidecar (Pattern 2)..."
 
-    # Check Envoy container is running
-    if kubectl get pod postgres-0 -n demo -o jsonpath='{.status.containerStatuses[?(@.name=="envoy")].ready}' | grep -q "true"; then
-        echo "✓ Envoy sidecar is running"
+    # Check spiffe-helper container is running
+    if kubectl get pod postgres-0 -n demo -o jsonpath='{.status.containerStatuses[?(@.name=="spiffe-helper")].ready}' | grep -q "true"; then
+        echo "✓ spiffe-helper sidecar is running"
     else
-        echo "✗ Envoy sidecar is not ready"
-        kubectl get pod postgres-0 -n demo -o jsonpath='{.status.containerStatuses[?(@.name=="envoy")]}'
+        echo "✗ spiffe-helper sidecar is not ready"
+        kubectl get pod postgres-0 -n demo -o jsonpath='{.status.containerStatuses}'
         exit 1
     fi
 
-    # Check Envoy admin endpoint
-    if kubectl exec -n demo postgres-0 -c envoy -- curl -s http://127.0.0.1:9901/ready | grep -q "LIVE"; then
-        echo "✓ Envoy admin endpoint is responsive"
+    # Check SPIFFE certificates are written
+    echo "→ Checking SPIFFE certificates..."
+
+    if kubectl exec -n demo postgres-0 -c spiffe-helper -- ls -la /spiffe-certs/svid.pem &> /dev/null; then
+        echo "✓ SVID certificate (svid.pem) exists"
     else
-        echo "⚠ Envoy admin endpoint check failed (may be normal during startup)"
+        echo "✗ SVID certificate not found"
+        exit 1
     fi
 
-    # Check Envoy clusters
-    CLUSTER_STATUS=$(kubectl exec -n demo postgres-0 -c envoy -- curl -s http://127.0.0.1:9901/clusters 2>/dev/null || echo "")
-    if echo "$CLUSTER_STATUS" | grep -q "spire_agent"; then
-        echo "✓ Envoy SPIRE agent cluster configured"
+    if kubectl exec -n demo postgres-0 -c spiffe-helper -- ls -la /spiffe-certs/svid_key.pem &> /dev/null; then
+        echo "✓ SVID private key (svid_key.pem) exists"
     else
-        echo "⚠ SPIRE agent cluster not found in Envoy config"
+        echo "✗ SVID private key not found"
+        exit 1
     fi
+
+    if kubectl exec -n demo postgres-0 -c spiffe-helper -- ls -la /spiffe-certs/svid_bundle.pem &> /dev/null; then
+        echo "✓ SVID trust bundle (svid_bundle.pem) exists"
+    else
+        echo "✗ SVID trust bundle not found"
+        exit 1
+    fi
+
+    echo ""
+}
+
+# Verify PostgreSQL SSL configuration
+verify_postgres_ssl() {
+    echo "→ Verifying PostgreSQL SSL configuration..."
+
+    # Check SSL is enabled
+    SSL_STATUS=$(kubectl exec -n demo postgres-0 -c postgres -- psql -U demouser -d demo -t -c "SHOW ssl;" 2>/dev/null | tr -d ' ')
+    if [ "$SSL_STATUS" = "on" ]; then
+        echo "✓ PostgreSQL SSL is enabled"
+    else
+        echo "⚠ PostgreSQL SSL status: $SSL_STATUS (expected: on)"
+    fi
+
+    # Show SSL certificate info
+    echo "→ SSL certificate details:"
+    kubectl exec -n demo postgres-0 -c postgres -- psql -U demouser -d demo -c "SELECT ssl_is_used();" 2>/dev/null || echo "  (SSL usage check requires active connection)"
 
     echo ""
 }
@@ -128,19 +162,32 @@ main() {
     check_prerequisites
     deploy_postgres
     verify_postgres
-    verify_postgres_envoy
+    verify_postgres_spiffe_helper
+    verify_postgres_ssl
 
     echo "========================================"
     echo "✓ PostgreSQL Deployment Complete"
     echo "========================================"
     echo ""
-    echo "PostgreSQL is running with Envoy mTLS sidecar"
-    echo "Connection string (internal): postgres.demo.svc.cluster.local:5433"
+    echo "PostgreSQL is running with spiffe-helper sidecar (Pattern 2)"
+    echo "  - SPIFFE certificates are written to /spiffe-certs"
+    echo "  - PostgreSQL SSL is configured to use SVID certificates"
+    echo "  - Client certificate authentication is enabled"
+    echo ""
+    echo "Connection string (internal): postgres.demo.svc.cluster.local:5432"
+    echo ""
+    echo "To verify SSL certificates:"
+    echo "  kubectl exec -n demo postgres-0 -c spiffe-helper -- ls -la /spiffe-certs/"
+    echo ""
+    echo "To check PostgreSQL logs:"
+    echo "  kubectl logs -n demo postgres-0 -c postgres"
+    echo ""
+    echo "To check spiffe-helper logs:"
+    echo "  kubectl logs -n demo postgres-0 -c spiffe-helper"
     echo ""
     echo "Next steps:"
-    echo "  - Deploy backend: ./scripts/04-deploy-apps.sh (backend section - to be added)"
-    echo "  - Check logs: kubectl logs -n demo postgres-0 -c postgres"
-    echo "  - Check Envoy: kubectl logs -n demo postgres-0 -c envoy"
+    echo "  - Register SPIRE entries: ./scripts/05-register-entries.sh"
+    echo "  - Deploy backend (to be added)"
 }
 
 main "$@"

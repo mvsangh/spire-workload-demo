@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-spiffe-helper-config
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: spiffe-helper
+    app.kubernetes.io/part-of: spire-demo
+data:
+  # spiffe-helper configuration for PostgreSQL server certificates
+  # Pattern 2: spiffe-helper writes SVID certificates for PostgreSQL SSL
+  spiffe-helper.conf: |
+    # SPIRE Agent Workload API socket path
+    agentAddress = "/run/spire/agent-sockets/spire-agent.sock"
+
+    # Directory where certificates will be written
+    # PostgreSQL will read server certificates from here
+    certDir = "/spiffe-certs"
+
+    # Certificate file names matching PostgreSQL SSL configuration
+    # svid.pem - Server certificate (ssl_cert_file)
+    # svid_key.pem - Server private key (ssl_key_file)
+    # svid_bundle.pem - CA bundle for client verification (ssl_ca_file)
+    svidFileName = "svid.pem"
+    svidKeyFileName = "svid_key.pem"
+    svidBundleFileName = "svid_bundle.pem"
+
+    # Command to run after certificate renewal (optional)
+    # PostgreSQL will automatically reload SSL certs on SIGHUP
+    # Note: We don't send signal directly - PostgreSQL watches file changes
+    renewSignal = ""
+
+    # No command to execute after renewal
+    cmd = ""
+    cmdArgs = ""
