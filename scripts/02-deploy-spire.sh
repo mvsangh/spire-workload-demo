@@ -119,10 +119,71 @@ verify_spire_server() {
     log_info "SPIRE Server verification complete."
 }
 
-# Deploy SPIRE Agent (placeholder for Group 3)
+# Deploy SPIRE Agent
 deploy_spire_agent() {
-    log_info "SPIRE Agent deployment will be added in Group 3 tasks..."
-    # This function will be implemented in Tasks 15-23
+    log_info "Deploying SPIRE Agent..."
+
+    # Apply SPIRE agent manifests using kustomize
+    kubectl apply -k "${PROJECT_ROOT}/deploy/spire/agent/"
+
+    log_info "Waiting for SPIRE Agent to be ready..."
+
+    # Wait for the DaemonSet pods to be ready
+    kubectl wait --for=condition=ready pod \
+        -l app=spire-agent \
+        -n spire-system \
+        --timeout=120s
+
+    log_info "SPIRE Agent deployed and ready."
+}
+
+# Verify SPIRE Agent health
+verify_spire_agent() {
+    log_info "Verifying SPIRE Agent health..."
+
+    # Get the agent pod name (there's one per node)
+    AGENT_POD=$(kubectl get pod -n spire-system -l app=spire-agent -o jsonpath='{.items[0].metadata.name}')
+
+    if [ -z "${AGENT_POD}" ]; then
+        log_error "SPIRE Agent pod not found."
+        exit 1
+    fi
+
+    log_info "SPIRE Agent pod: ${AGENT_POD}"
+
+    # Check pod status
+    POD_STATUS=$(kubectl get pod -n spire-system "${AGENT_POD}" -o jsonpath='{.status.phase}')
+    if [ "${POD_STATUS}" != "Running" ]; then
+        log_error "SPIRE Agent pod is not running. Status: ${POD_STATUS}"
+        kubectl describe pod -n spire-system "${AGENT_POD}"
+        exit 1
+    fi
+
+    # Check health endpoint
+    log_info "Checking agent health endpoint..."
+    kubectl exec -n spire-system "${AGENT_POD}" -- \
+        wget -q -O - http://localhost:8080/ready || {
+            log_warn "Health endpoint check returned non-zero, checking logs..."
+        }
+
+    # Run healthcheck
+    log_info "Running SPIRE Agent healthcheck..."
+    kubectl exec -n spire-system "${AGENT_POD}" -- \
+        /opt/spire/bin/spire-agent healthcheck || {
+            log_error "SPIRE Agent healthcheck failed."
+            kubectl logs -n spire-system "${AGENT_POD}" --tail=50
+            exit 1
+        }
+
+    # Verify socket file exists on the host
+    log_info "Verifying workload API socket..."
+    kubectl exec -n spire-system "${AGENT_POD}" -- \
+        ls -la /run/spire/agent-sockets/spire-agent.sock || {
+            log_error "Workload API socket not found."
+            exit 1
+        }
+
+    log_info "SPIRE Agent verification complete."
 }
 
 # Main execution
@@ -133,12 +194,13 @@ main() {
     deploy_namespaces
     deploy_spire_server
     verify_spire_server
+    deploy_spire_agent
+    verify_spire_agent
 
-    # Agent deployment placeholder
-    # deploy_spire_agent
-
-    log_info "=== SPIRE Server deployment complete ==="
-    log_info "Next step: Run ./scripts/03-deploy-apps.sh (after completing Group 3)"
+    log_info "=== SPIRE deployment complete ==="
+    log_info "Server: Running"
+    log_info "Agent: Running"
+    log_info "Next step: Run ./scripts/03-deploy-apps.sh"
 }
 
 main "$@"

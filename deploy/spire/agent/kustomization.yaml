@@ -1,0 +1,19 @@
+# Kustomization for SPIRE Agent
+# Bundles all SPIRE agent resources
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: spire-system
+
+resources:
+  - serviceaccount.yaml
+  - clusterrole.yaml
+  - clusterrolebinding.yaml
+  - configmap.yaml
+  - daemonset.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: spire-demo
+    includeSelectors: false
