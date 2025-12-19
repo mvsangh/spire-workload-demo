@@ -193,8 +193,8 @@ SPIRE server must be fully deployed before agent or workloads.
 **File**: `deploy/spire/server/serviceaccount.yaml`
 
 **Acceptance Criteria**:
-- [ ] ServiceAccount named `spire-server`
-- [ ] In namespace `spire-system`
+- [x] ServiceAccount named `spire-server`
+- [x] In namespace `spire-system`
 
 **Verification Command**:
 ```bash
@@ -205,11 +205,11 @@ kubectl apply -f deploy/spire/server/serviceaccount.yaml --dry-run=client
 
 | Field | Value |
 |-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+| **Status** | `[x]` Completed |
+| **Commands Run** | Write serviceaccount.yaml |
+| **Files Changed** | `deploy/spire/server/serviceaccount.yaml` (created) |
+| **Issues Encountered** | None |
+| **Notes** | Includes app.kubernetes.io labels |
 
 ---
 
@@ -222,9 +222,9 @@ kubectl apply -f deploy/spire/server/serviceaccount.yaml --dry-run=client
 **File**: `deploy/spire/server/clusterrole.yaml`
 
 **Acceptance Criteria**:
-- [ ] ClusterRole named `spire-server-cluster-role`
-- [ ] Includes `nodes` get/list permissions
-- [ ] Includes `tokenreviews` create permission
+- [x] ClusterRole named `spire-server-cluster-role`
+- [x] Includes `nodes` get/list permissions
+- [x] Includes `tokenreviews` create permission
 
 **Verification Command**:
 ```bash
@@ -235,11 +235,11 @@ kubectl apply -f deploy/spire/server/clusterrole.yaml --dry-run=client
 
 | Field | Value |
 |-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+| **Status** | `[x]` Completed |
+| **Commands Run** | Write clusterrole.yaml |
+| **Files Changed** | `deploy/spire/server/clusterrole.yaml` (created) |
+| **Issues Encountered** | None |
+| **Notes** | Also includes pods get/list for workload attestation |
 
 ---
 
@@ -252,8 +252,8 @@ kubectl apply -f deploy/spire/server/clusterrole.yaml --dry-run=client
 **File**: `deploy/spire/server/clusterrolebinding.yaml`
 
 **Acceptance Criteria**:
-- [ ] Binds `spire-server-cluster-role` to `spire-server` SA
-- [ ] References correct namespace `spire-system`
+- [x] Binds `spire-server-cluster-role` to `spire-server` SA
+- [x] References correct namespace `spire-system`
 
 **Verification Command**:
 ```bash
@@ -264,11 +264,11 @@ kubectl apply -f deploy/spire/server/clusterrolebinding.yaml --dry-run=client
 
 | Field | Value |
 |-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+| **Status** | `[x]` Completed |
+| **Commands Run** | Write clusterrolebinding.yaml |
+| **Files Changed** | `deploy/spire/server/clusterrolebinding.yaml` (created) |
+| **Issues Encountered** | None |
+| **Notes** | Binds to spire-system namespace |
 
 ---
 
@@ -281,11 +281,11 @@ kubectl apply -f deploy/spire/server/clusterrolebinding.yaml --dry-run=client
 **File**: `deploy/spire/server/configmap.yaml`
 
 **Acceptance Criteria**:
-- [ ] ConfigMap named `spire-server-config`
-- [ ] Contains `server.conf` with trust_domain `example.org`
-- [ ] Uses SQLite datastore
-- [ ] Configures k8s_psat node attestor
-- [ ] Sets log_level to DEBUG
+- [x] ConfigMap named `spire-server-config`
+- [x] Contains `server.conf` with trust_domain `example.org`
+- [x] Uses SQLite datastore
+- [x] Configures k8s_psat node attestor
+- [x] Sets log_level to DEBUG
 
 **Verification Command**:
 ```bash
@@ -296,11 +296,11 @@ kubectl apply -f deploy/spire/server/configmap.yaml --dry-run=client
 
 | Field | Value |
 |-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+| **Status** | `[x]` Completed |
+| **Commands Run** | Write configmap.yaml |
+| **Files Changed** | `deploy/spire/server/configmap.yaml` (created) |
+| **Issues Encountered** | None |
+| **Notes** | Includes k8sbundle notifier, 1h SVID TTL for demo rotation |
 
 ---
 
@@ -313,11 +313,11 @@ kubectl apply -f deploy/spire/server/configmap.yaml --dry-run=client
 **File**: `deploy/spire/server/statefulset.yaml`
 
 **Acceptance Criteria**:
-- [ ] StatefulSet named `spire-server`
-- [ ] Uses image `ghcr.io/spiffe/spire-server:1.9.6`
-- [ ] Mounts ConfigMap at `/run/spire/config`
-- [ ] Has liveness and readiness probes
-- [ ] Includes PVC for data persistence
+- [x] StatefulSet named `spire-server`
+- [x] Uses image `ghcr.io/spiffe/spire-server:1.9.6`
+- [x] Mounts ConfigMap at `/run/spire/config`
+- [x] Has liveness and readiness probes
+- [x] Includes PVC for data persistence
 
 **Verification Command**:
 ```bash
@@ -328,11 +328,11 @@ kubectl apply -f deploy/spire/server/statefulset.yaml --dry-run=client
 
 | Field | Value |
 |-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+| **Status** | `[x]` Completed |
+| **Commands Run** | Write statefulset.yaml |
+| **Files Changed** | `deploy/spire/server/statefulset.yaml` (created) |
+| **Issues Encountered** | None |
+| **Notes** | Includes resource limits, HTTP health probes on port 8080 |
 
 ---
 
@@ -345,10 +345,10 @@ kubectl apply -f deploy/spire/server/statefulset.yaml --dry-run=client
 **File**: `deploy/spire/server/service.yaml`
 
 **Acceptance Criteria**:
-- [ ] Service named `spire-server`
-- [ ] Type ClusterIP
-- [ ] Exposes port 8081 (gRPC)
-- [ ] Selector matches `app: spire-server`
+- [x] Service named `spire-server`
+- [x] Type ClusterIP
+- [x] Exposes port 8081 (gRPC)
+- [x] Selector matches `app: spire-server`
 
 **Verification Command**:
 ```bash
@@ -359,11 +359,11 @@ kubectl apply -f deploy/spire/server/service.yaml --dry-run=client
 
 | Field | Value |
 |-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+| **Status** | `[x]` Completed |
+| **Commands Run** | Write service.yaml |
+| **Files Changed** | `deploy/spire/server/service.yaml` (created) |
+| **Issues Encountered** | None |
+| **Notes** | ClusterIP service for agent connections |
 
 ---
 
@@ -376,8 +376,8 @@ kubectl apply -f deploy/spire/server/service.yaml --dry-run=client
 **File**: `deploy/spire/server/kustomization.yaml`
 
 **Acceptance Criteria**:
-- [ ] Lists all server YAML files as resources
-- [ ] Valid kustomization syntax
+- [x] Lists all server YAML files as resources
+- [x] Valid kustomization syntax
 
 **Verification Command**:
 ```bash
@@ -388,11 +388,11 @@ kubectl kustomize deploy/spire/server/
 
 | Field | Value |
 |-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+| **Status** | `[x]` Completed |
+| **Commands Run** | Write kustomization.yaml, `kubectl kustomize` validation |
+| **Files Changed** | `deploy/spire/server/kustomization.yaml` (created) |
+| **Issues Encountered** | Updated from commonLabels to labels (deprecated warning) |
+| **Notes** | Uses new labels syntax with includeSelectors: false |
 
 ---
 
@@ -405,11 +405,11 @@ kubectl kustomize deploy/spire/server/
 **File**: `scripts/02-deploy-spire.sh` (server section)
 
 **Acceptance Criteria**:
-- [ ] Script is executable
-- [ ] Applies namespaces first
-- [ ] Applies SPIRE server manifests
-- [ ] Waits for spire-server-0 to be ready
-- [ ] Includes timeout (120s)
+- [x] Script is executable
+- [x] Applies namespaces first
+- [x] Applies SPIRE server manifests
+- [x] Waits for spire-server-0 to be ready
+- [x] Includes timeout (120s)
 
 **Verification Command**:
 ```bash
@@ -420,11 +420,11 @@ chmod +x scripts/02-deploy-spire.sh && bash -n scripts/02-deploy-spire.sh
 
 | Field | Value |
 |-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+| **Status** | `[x]` Completed |
+| **Commands Run** | Write script, `chmod +x`, `bash -n` syntax check |
+| **Files Changed** | `scripts/02-deploy-spire.sh` (created) |
+| **Issues Encountered** | None |
+| **Notes** | Includes prerequisite check, namespace deploy, server deploy, verification |
 
 ---
 
@@ -437,9 +437,9 @@ chmod +x scripts/02-deploy-spire.sh && bash -n scripts/02-deploy-spire.sh
 **Update**: `scripts/02-deploy-spire.sh`
 
 **Acceptance Criteria**:
-- [ ] Script verifies pod is Running
-- [ ] Script runs `spire-server healthcheck` command
-- [ ] Fails with clear error if unhealthy
+- [x] Script verifies pod is Running
+- [x] Script runs `spire-server healthcheck` command
+- [x] Fails with clear error if unhealthy
 
 **Verification Command**:
 ```bash
@@ -450,11 +450,11 @@ grep -A5 "healthcheck" scripts/02-deploy-spire.sh
 
 | Field | Value |
 |-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+| **Status** | `[x]` Completed |
+| **Commands Run** | Included in Task 13 script |
+| **Files Changed** | `scripts/02-deploy-spire.sh` (verification embedded) |
+| **Issues Encountered** | None |
+| **Notes** | verify_spire_server function checks pod status, health endpoint, and healthcheck |
 
 ---
 
