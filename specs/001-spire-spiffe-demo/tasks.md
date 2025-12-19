@@ -396,13 +396,13 @@ kubectl kustomize deploy/spire/server/
 
 ---
 
-### Task 13: Create SPIRE deployment script (server portion)
+### Task 13: Create SPIRE Server deployment script
 
-**Goal**: Create script section to deploy SPIRE server.
+**Goal**: Create standalone script to deploy SPIRE server only.
 
 **Dependencies**: Tasks 6-12
 
-**File**: `scripts/02-deploy-spire.sh` (server section)
+**File**: `scripts/02-deploy-spire-server.sh`
 
 **Acceptance Criteria**:
 - [x] Script is executable
@@ -413,7 +413,7 @@ kubectl kustomize deploy/spire/server/
 
 **Verification Command**:
 ```bash
-chmod +x scripts/02-deploy-spire.sh && bash -n scripts/02-deploy-spire.sh
+chmod +x scripts/02-deploy-spire-server.sh && bash -n scripts/02-deploy-spire-server.sh
 ```
 
 #### Execution Log
@@ -422,9 +422,9 @@ chmod +x scripts/02-deploy-spire.sh && bash -n scripts/02-deploy-spire.sh
 |-------|-------|
 | **Status** | `[x]` Completed |
 | **Commands Run** | Write script, `chmod +x`, `bash -n` syntax check |
-| **Files Changed** | `scripts/02-deploy-spire.sh` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Includes prerequisite check, namespace deploy, server deploy, verification |
+| **Files Changed** | `scripts/02-deploy-spire-server.sh` (created) |
+| **Issues Encountered** | Split from combined 02-deploy-spire.sh per analysis findings |
+| **Notes** | Server-only script for clearer demo flow. Includes prerequisite check, namespace deploy, server deploy, verification |
 
 ---
 
@@ -434,7 +434,7 @@ chmod +x scripts/02-deploy-spire.sh && bash -n scripts/02-deploy-spire.sh
 
 **Dependencies**: Task 13
 
-**Update**: `scripts/02-deploy-spire.sh`
+**Update**: `scripts/02-deploy-spire-server.sh`
 
 **Acceptance Criteria**:
 - [x] Script verifies pod is Running
@@ -443,7 +443,7 @@ chmod +x scripts/02-deploy-spire.sh && bash -n scripts/02-deploy-spire.sh
 
 **Verification Command**:
 ```bash
-grep -A5 "healthcheck" scripts/02-deploy-spire.sh
+grep -A5 "healthcheck" scripts/02-deploy-spire-server.sh
 ```
 
 #### Execution Log
@@ -452,9 +452,9 @@ grep -A5 "healthcheck" scripts/02-deploy-spire.sh
 |-------|-------|
 | **Status** | `[x]` Completed |
 | **Commands Run** | Included in Task 13 script |
-| **Files Changed** | `scripts/02-deploy-spire.sh` (verification embedded) |
+| **Files Changed** | `scripts/02-deploy-spire-server.sh` (verification embedded) |
 | **Issues Encountered** | None |
-| **Notes** | verify_spire_server function checks pod status, health endpoint, and healthcheck |
+| **Notes** | verify_spire_server function checks pod status and healthcheck
 
 ---
 
@@ -649,22 +649,24 @@ kubectl kustomize deploy/spire/agent/
 
 ---
 
-### Task 21: Update SPIRE deployment script (agent portion)
+### Task 21: Create SPIRE Agent deployment script
 
-**Goal**: Add SPIRE agent deployment to script.
+**Goal**: Create standalone script to deploy SPIRE agent only.
 
 **Dependencies**: Task 14, Tasks 15-20
 
-**Update**: `scripts/02-deploy-spire.sh`
+**File**: `scripts/03-deploy-spire-agent.sh`
 
 **Acceptance Criteria**:
-- [x] Applies SPIRE agent manifests after server is ready
+- [x] Script is executable
+- [x] Checks SPIRE server is running before deploying agent
+- [x] Applies SPIRE agent manifests
 - [x] Waits for agent pod to be ready
 - [x] Includes timeout (120s)
 
 **Verification Command**:
 ```bash
-grep -A10 "agent" scripts/02-deploy-spire.sh
+chmod +x scripts/03-deploy-spire-agent.sh && bash -n scripts/03-deploy-spire-agent.sh
 ```
 
 #### Execution Log
@@ -672,10 +674,10 @@ grep -A10 "agent" scripts/02-deploy-spire.sh
 | Field | Value |
 |-------|-------|
 | **Status** | `[x]` Completed |
-| **Commands Run** | Updated 02-deploy-spire.sh with deploy_spire_agent function |
-| **Files Changed** | `scripts/02-deploy-spire.sh` (updated) |
+| **Commands Run** | Write script, `chmod +x`, split from combined script |
+| **Files Changed** | `scripts/03-deploy-spire-agent.sh` (created) |
 | **Issues Encountered** | None |
-| **Notes** | Added deploy_spire_agent function with kubectl wait |
+| **Notes** | Agent-only script for clearer demo flow. Includes prerequisite check for server, agent deploy, verification |
 
 ---
 
@@ -685,16 +687,16 @@ grep -A10 "agent" scripts/02-deploy-spire.sh
 
 **Dependencies**: Task 21
 
-**Update**: `scripts/02-deploy-spire.sh`
+**Update**: `scripts/03-deploy-spire-agent.sh`
 
 **Acceptance Criteria**:
 - [x] Script verifies agent pod is Running
 - [x] Script runs `spire-agent healthcheck` command
-- [x] Verifies socket file exists at expected path
+- [x] Verifies agent attestation with server
 
 **Verification Command**:
 ```bash
-grep -A5 "agent.*healthcheck" scripts/02-deploy-spire.sh
+grep -A5 "healthcheck" scripts/03-deploy-spire-agent.sh
 ```
 
 #### Execution Log
@@ -702,10 +704,10 @@ grep -A5 "agent.*healthcheck" scripts/02-deploy-spire.sh
 | Field | Value |
 |-------|-------|
 | **Status** | `[x]` Completed |
-| **Commands Run** | Updated 02-deploy-spire.sh with verify_spire_agent function |
-| **Files Changed** | `scripts/02-deploy-spire.sh` (updated) |
+| **Commands Run** | Verification embedded in Task 21 script |
+| **Files Changed** | `scripts/03-deploy-spire-agent.sh` (verification embedded) |
 | **Issues Encountered** | None |
-| **Notes** | Added verify_spire_agent function checking pod status, healthcheck, socket |
+| **Notes** | verify_spire_agent function checks pod status, healthcheck; verify_attestation lists attested agents
 
 ---
 
