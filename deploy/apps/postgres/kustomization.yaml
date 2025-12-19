@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# PostgreSQL with spiffe-helper sidecar (Pattern 2: file-based SPIFFE integration)
+# This replaces the previous Envoy-based approach
+
+resources:
+- serviceaccount.yaml
+- init-configmap.yaml
+- spiffe-helper-configmap.yaml  # Pattern 2: spiffe-helper configuration
+- ssl-configmap.yaml            # PostgreSQL SSL/pg_hba.conf settings
+- statefulset.yaml              # PostgreSQL + spiffe-helper sidecar
+- service.yaml
+
+labels:
+- includeSelectors: false
+  pairs:
+    app.kubernetes.io/managed-by: kustomize

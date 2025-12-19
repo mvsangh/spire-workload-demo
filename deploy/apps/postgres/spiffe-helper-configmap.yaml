@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-spiffe-helper-config
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: spiffe-helper
+    app.kubernetes.io/part-of: spire-demo
+data:
+  # spiffe-helper configuration for PostgreSQL server certificates
+  # Pattern 2: spiffe-helper writes SVID certificates for PostgreSQL SSL
+  spiffe-helper.conf: |
+    # SPIRE Agent Workload API socket path
+    agent_address = "/run/spire/agent-sockets/spire-agent.sock"
+
+    # Directory where certificates will be written
+    cert_dir = "/spiffe-certs"
+
+    # Certificate file names
+    svid_file_name = "svid.pem"
+    svid_key_file_name = "svid_key.pem"
+    svid_bundle_file_name = "svid_bundle.pem"
+
+    # File permissions (octal) - CRITICAL for PostgreSQL
+    # PostgreSQL requires private key to be mode 0600
+    cert_file_mode = 0644
+    key_file_mode = 0600

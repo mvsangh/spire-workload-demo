@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-ssl-config
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: ssl-config
+    app.kubernetes.io/part-of: spire-demo
+data:
+  # PostgreSQL SSL configuration snippet
+  # Pattern 2: PostgreSQL directly verifies client SPIFFE IDs from SVID certificates
+  #
+  # These settings are appended to postgresql.conf via docker-entrypoint
+  # Certificate files are written by spiffe-helper sidecar to /spiffe-certs
+
+  ssl-settings.conf: |
+    # Enable SSL/TLS
+    ssl = on
+
+    # Server certificate and key (written by spiffe-helper)
+    # These contain the PostgreSQL server's SPIFFE identity
+    ssl_cert_file = '/spiffe-certs/svid.pem'
+    ssl_key_file = '/spiffe-certs/svid_key.pem'
+
+    # CA certificate bundle for verifying client certificates
+    # This is the SPIRE trust bundle for validating client SVIDs
+    ssl_ca_file = '/spiffe-certs/svid_bundle.pem'
+
+    # Minimum TLS version (TLS 1.2+ for security)
+    ssl_min_protocol_version = 'TLSv1.2'
+
+    # Prefer server cipher order
+    ssl_prefer_server_ciphers = on
+
+    # Log SSL connection info for demo visibility
+    log_connections = on
+
+  # pg_hba.conf rules for client certificate authentication
+  # This enforces mTLS - clients MUST present valid SVID certificates
+  pg_hba.conf: |
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+    # Allow local connections without SSL (for health checks inside container)
+    local   all             all                                     trust
+
+    # Require SSL with client certificate verification for all remote connections
+    # clientcert=verify-full means:
+    # 1. Client MUST present a certificate
+    # 2. Certificate MUST be signed by a CA in ssl_ca_file (SPIRE trust bundle)
+    # 3. Certificate CN/SAN is verified against the username
+    #
+    # For SPIFFE, the client's SVID certificate contains the SPIFFE ID in the SAN
+    # PostgreSQL will verify the certificate chain against the SPIRE CA
+    hostssl all             all             0.0.0.0/0               scram-sha-256  clientcert=verify-ca
+
+    # IPv6 connections with same requirements
+    hostssl all             all             ::/0                    scram-sha-256  clientcert=verify-ca

@@ -1,9 +1,13 @@
 # Implementation Tasks: SPIRE/SPIFFE Demo
 
 **Branch**: `001-spire-spiffe-demo`
-**Generated**: 2025-12-19
-**Total Tasks**: 58
-**Estimated Phases**: 6 groups with strict dependency ordering
+**Generated**: 2025-12-19 (Updated with corrected dual-pattern architecture)
+**Total Tasks**: 74
+**Estimated Phases**: 7 phases organized by user story
+
+**CRITICAL ARCHITECTURE UPDATE**: This implementation uses TWO SPIFFE integration patterns:
+- **Pattern 1**: Envoy SDS (frontend ↔ backend)
+- **Pattern 2**: spiffe-helper (backend → PostgreSQL)
 
 ---
 
@@ -14,22 +18,22 @@
 | `[ ]` | Not started |
 | `[~]` | In progress |
 | `[x]` | Completed |
-| `[!]` | Blocked |
-| `[-]` | Skipped |
+| `[!]` | Needs correction (wrong architecture) |
+| `[-]` | Skipped/Deprecated |
 
 ---
 
-## Group 1: Infrastructure Foundation (Tasks 1-5)
+## Phase 1: Setup (Tasks 1-5) - COMPLETED ✅
 
-These tasks have no dependencies and establish the base infrastructure.
+**Purpose**: Project initialization and Go module configuration
 
 ---
 
 ### Task 1: Create kind cluster configuration file
 
-**Goal**: Create the kind cluster config YAML for SPIRE demo.
+**Status**: `[x]` Completed
 
-**Dependencies**: None
+**Goal**: Create the kind cluster config YAML for SPIRE demo.
 
 **File**: `deploy/kind/cluster-config.yaml`
 
@@ -39,28 +43,13 @@ These tasks have no dependencies and establish the base infrastructure.
 - [x] Has extraPortMappings for port 30080 → 8080
 - [x] Valid YAML syntax
 
-**Verification Command**:
-```bash
-cat deploy/kind/cluster-config.yaml && kind create cluster --config deploy/kind/cluster-config.yaml --dry-run
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | `mkdir -p deploy/kind`, Write cluster-config.yaml, YAML validation via Python |
-| **Files Changed** | `deploy/kind/cluster-config.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Config includes extraPortMappings 30080→8080 and node labels for SPIRE agent |
-
 ---
 
 ### Task 2: Create cluster setup script
 
-**Goal**: Create shell script to create kind cluster.
+**Status**: `[x]` Completed
 
-**Dependencies**: Task 1
+**Goal**: Create shell script to create kind cluster.
 
 **File**: `scripts/01-create-cluster.sh`
 
@@ -70,28 +59,13 @@ cat deploy/kind/cluster-config.yaml && kind create cluster --config deploy/kind/
 - [x] Includes error handling (set -e)
 - [x] Prints status messages
 
-**Verification Command**:
-```bash
-chmod +x scripts/01-create-cluster.sh && head -20 scripts/01-create-cluster.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write script, `chmod +x`, `bash -n` syntax check |
-| **Files Changed** | `scripts/01-create-cluster.sh` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Script includes prerequisite checks, existing cluster handling, and verification steps |
-
 ---
 
 ### Task 3: Create namespaces manifest
 
-**Goal**: Create Kubernetes namespace definitions for spire-system and demo.
+**Status**: `[x]` Completed
 
-**Dependencies**: None
+**Goal**: Create Kubernetes namespace definitions for spire-system and demo.
 
 **File**: `deploy/namespaces.yaml`
 
@@ -100,58 +74,28 @@ chmod +x scripts/01-create-cluster.sh && head -20 scripts/01-create-cluster.sh
 - [x] Defines namespace `demo`
 - [x] Valid YAML syntax
 
-**Verification Command**:
-```bash
-kubectl apply -f deploy/namespaces.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write namespaces.yaml, `kubectl apply --dry-run=client --validate=false` |
-| **Files Changed** | `deploy/namespaces.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Both namespaces include app.kubernetes.io labels for identification |
-
 ---
 
 ### Task 4: Create Go module initialization
 
-**Goal**: Initialize Go module for the project.
+**Status**: `[x]` Completed
 
-**Dependencies**: None
+**Goal**: Initialize Go module for the project.
 
 **Files**: `go.mod`, `go.sum`
 
 **Acceptance Criteria**:
 - [x] go.mod exists with module path
 - [x] Go version is 1.21+
-- [x] Module name follows convention (e.g., `github.com/example/spire-workload-demo`)
-
-**Verification Command**:
-```bash
-cat go.mod && go mod verify
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | `go mod init github.com/example/spire-workload-demo`, `go mod verify` |
-| **Files Changed** | `go.mod` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Using Go 1.25.5 (latest installed version) |
+- [x] Module name follows convention
 
 ---
 
 ### Task 5: Create cleanup script
 
-**Goal**: Create script to tear down the entire demo environment.
+**Status**: `[x]` Completed
 
-**Dependencies**: None
+**Goal**: Create script to tear down the entire demo environment.
 
 **File**: `scripts/cleanup.sh`
 
@@ -161,879 +105,443 @@ cat go.mod && go mod verify
 - [x] Handles case where cluster doesn't exist
 - [x] Prints confirmation message
 
-**Verification Command**:
-```bash
-chmod +x scripts/cleanup.sh && bash -n scripts/cleanup.sh
-```
+---
 
-#### Execution Log
+## Phase 2: Foundational - SPIRE Infrastructure (Tasks 6-23) - COMPLETED ✅
 
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write script, `chmod +x`, `bash -n` syntax check |
-| **Files Changed** | `scripts/cleanup.sh` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Script includes optional Docker image cleanup with user prompt |
+**Purpose**: Core SPIRE infrastructure that BLOCKS all user stories
 
 ---
 
-## Group 2: SPIRE Server (Tasks 6-14)
-
-SPIRE server must be fully deployed before agent or workloads.
-
----
+### Group 2: SPIRE Server (Tasks 6-14) - ALL COMPLETED ✅
 
 ### Task 6: Create SPIRE server ServiceAccount
 
-**Goal**: Create ServiceAccount for SPIRE server.
-
-**Dependencies**: Task 3 (namespaces)
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/server/serviceaccount.yaml`
-
-**Acceptance Criteria**:
-- [x] ServiceAccount named `spire-server`
-- [x] In namespace `spire-system`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/server/serviceaccount.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write serviceaccount.yaml |
-| **Files Changed** | `deploy/spire/server/serviceaccount.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Includes app.kubernetes.io labels |
 
 ---
 
 ### Task 7: Create SPIRE server ClusterRole
 
-**Goal**: Create ClusterRole with permissions for SPIRE server.
-
-**Dependencies**: None
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/server/clusterrole.yaml`
-
-**Acceptance Criteria**:
-- [x] ClusterRole named `spire-server-cluster-role`
-- [x] Includes `nodes` get/list permissions
-- [x] Includes `tokenreviews` create permission
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/server/clusterrole.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write clusterrole.yaml |
-| **Files Changed** | `deploy/spire/server/clusterrole.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Also includes pods get/list for workload attestation |
 
 ---
 
 ### Task 8: Create SPIRE server ClusterRoleBinding
 
-**Goal**: Bind ClusterRole to SPIRE server ServiceAccount.
-
-**Dependencies**: Task 6, Task 7
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/server/clusterrolebinding.yaml`
-
-**Acceptance Criteria**:
-- [x] Binds `spire-server-cluster-role` to `spire-server` SA
-- [x] References correct namespace `spire-system`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/server/clusterrolebinding.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write clusterrolebinding.yaml |
-| **Files Changed** | `deploy/spire/server/clusterrolebinding.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Binds to spire-system namespace |
 
 ---
 
 ### Task 9: Create SPIRE server ConfigMap
 
-**Goal**: Create ConfigMap with SPIRE server configuration (server.conf).
-
-**Dependencies**: Task 3 (namespaces)
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/server/configmap.yaml`
-
-**Acceptance Criteria**:
-- [x] ConfigMap named `spire-server-config`
-- [x] Contains `server.conf` with trust_domain `example.org`
-- [x] Uses SQLite datastore
-- [x] Configures k8s_psat node attestor
-- [x] Sets log_level to DEBUG
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/server/configmap.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write configmap.yaml |
-| **Files Changed** | `deploy/spire/server/configmap.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Includes k8sbundle notifier, 1h SVID TTL for demo rotation |
 
 ---
 
 ### Task 10: Create SPIRE server StatefulSet
 
-**Goal**: Create StatefulSet for SPIRE server deployment.
-
-**Dependencies**: Task 6, Task 9
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/server/statefulset.yaml`
-
-**Acceptance Criteria**:
-- [x] StatefulSet named `spire-server`
-- [x] Uses image `ghcr.io/spiffe/spire-server:1.9.6`
-- [x] Mounts ConfigMap at `/run/spire/config`
-- [x] Has liveness and readiness probes
-- [x] Includes PVC for data persistence
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/server/statefulset.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write statefulset.yaml |
-| **Files Changed** | `deploy/spire/server/statefulset.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Includes resource limits, HTTP health probes on port 8080 |
 
 ---
 
 ### Task 11: Create SPIRE server Service
 
-**Goal**: Create ClusterIP Service for SPIRE server.
-
-**Dependencies**: Task 10
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/server/service.yaml`
-
-**Acceptance Criteria**:
-- [x] Service named `spire-server`
-- [x] Type ClusterIP
-- [x] Exposes port 8081 (gRPC)
-- [x] Selector matches `app: spire-server`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/server/service.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write service.yaml |
-| **Files Changed** | `deploy/spire/server/service.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | ClusterIP service for agent connections |
 
 ---
 
 ### Task 12: Create SPIRE server kustomization
 
-**Goal**: Create kustomization.yaml to bundle all SPIRE server resources.
-
-**Dependencies**: Tasks 6-11
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/server/kustomization.yaml`
-
-**Acceptance Criteria**:
-- [x] Lists all server YAML files as resources
-- [x] Valid kustomization syntax
-
-**Verification Command**:
-```bash
-kubectl kustomize deploy/spire/server/
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write kustomization.yaml, `kubectl kustomize` validation |
-| **Files Changed** | `deploy/spire/server/kustomization.yaml` (created) |
-| **Issues Encountered** | Updated from commonLabels to labels (deprecated warning) |
-| **Notes** | Uses new labels syntax with includeSelectors: false |
 
 ---
 
 ### Task 13: Create SPIRE Server deployment script
 
-**Goal**: Create standalone script to deploy SPIRE server only.
-
-**Dependencies**: Tasks 6-12
+**Status**: `[x]` Completed
 
 **File**: `scripts/02-deploy-spire-server.sh`
-
-**Acceptance Criteria**:
-- [x] Script is executable
-- [x] Applies namespaces first
-- [x] Applies SPIRE server manifests
-- [x] Waits for spire-server-0 to be ready
-- [x] Includes timeout (120s)
-
-**Verification Command**:
-```bash
-chmod +x scripts/02-deploy-spire-server.sh && bash -n scripts/02-deploy-spire-server.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write script, `chmod +x`, `bash -n` syntax check |
-| **Files Changed** | `scripts/02-deploy-spire-server.sh` (created) |
-| **Issues Encountered** | Split from combined 02-deploy-spire.sh per analysis findings |
-| **Notes** | Server-only script for clearer demo flow. Includes prerequisite check, namespace deploy, server deploy, verification |
 
 ---
 
 ### Task 14: Verify SPIRE server deployment
 
-**Goal**: Add verification commands to deployment script.
+**Status**: `[x]` Completed
 
-**Dependencies**: Task 13
-
-**Update**: `scripts/02-deploy-spire-server.sh`
-
-**Acceptance Criteria**:
-- [x] Script verifies pod is Running
-- [x] Script runs `spire-server healthcheck` command
-- [x] Fails with clear error if unhealthy
-
-**Verification Command**:
-```bash
-grep -A5 "healthcheck" scripts/02-deploy-spire-server.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Included in Task 13 script |
-| **Files Changed** | `scripts/02-deploy-spire-server.sh` (verification embedded) |
-| **Issues Encountered** | None |
-| **Notes** | verify_spire_server function checks pod status and healthcheck
+**Update**: `scripts/02-deploy-spire-server.sh` (verification embedded)
 
 ---
 
-## Group 3: SPIRE Agent (Tasks 15-23)
-
-SPIRE agent depends on server being available.
-
----
+### Group 3: SPIRE Agent (Tasks 15-23) - ALL COMPLETED ✅
 
 ### Task 15: Create SPIRE agent ServiceAccount
 
-**Goal**: Create ServiceAccount for SPIRE agent.
-
-**Dependencies**: Task 3 (namespaces)
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/agent/serviceaccount.yaml`
-
-**Acceptance Criteria**:
-- [x] ServiceAccount named `spire-agent`
-- [x] In namespace `spire-system`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/agent/serviceaccount.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write serviceaccount.yaml |
-| **Files Changed** | `deploy/spire/agent/serviceaccount.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Includes app.kubernetes.io labels |
 
 ---
 
 ### Task 16: Create SPIRE agent ClusterRole
 
-**Goal**: Create ClusterRole with permissions for SPIRE agent.
-
-**Dependencies**: None
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/agent/clusterrole.yaml`
-
-**Acceptance Criteria**:
-- [x] ClusterRole named `spire-agent-cluster-role`
-- [x] Includes `pods` and `nodes` get/list permissions
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/agent/clusterrole.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write clusterrole.yaml |
-| **Files Changed** | `deploy/spire/agent/clusterrole.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Includes pods, nodes, nodes/proxy permissions |
 
 ---
 
 ### Task 17: Create SPIRE agent ClusterRoleBinding
 
-**Goal**: Bind ClusterRole to SPIRE agent ServiceAccount.
-
-**Dependencies**: Task 15, Task 16
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/agent/clusterrolebinding.yaml`
-
-**Acceptance Criteria**:
-- [x] Binds `spire-agent-cluster-role` to `spire-agent` SA
-- [x] References correct namespace `spire-system`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/agent/clusterrolebinding.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write clusterrolebinding.yaml |
-| **Files Changed** | `deploy/spire/agent/clusterrolebinding.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Binds to spire-system namespace |
 
 ---
 
 ### Task 18: Create SPIRE agent ConfigMap
 
-**Goal**: Create ConfigMap with SPIRE agent configuration (agent.conf).
-
-**Dependencies**: Task 3 (namespaces)
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/agent/configmap.yaml`
-
-**Acceptance Criteria**:
-- [x] ConfigMap named `spire-agent-config`
-- [x] Contains `agent.conf` with trust_domain `example.org`
-- [x] Socket path is `/run/spire/agent-sockets/spire-agent.sock`
-- [x] Server address is `spire-server:8081`
-- [x] Configures k8s_psat node attestor
-- [x] Configures k8s workload attestor
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/agent/configmap.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write configmap.yaml |
-| **Files Changed** | `deploy/spire/agent/configmap.yaml` (created) |
-| **Issues Encountered** | Initial config lacked trust_bundle_path, added to use spire-bundle ConfigMap |
-| **Notes** | Uses trust_bundle_path from server's k8sbundle notifier (secure bootstrap) |
 
 ---
 
 ### Task 19: Create SPIRE agent DaemonSet
 
-**Goal**: Create DaemonSet for SPIRE agent deployment.
-
-**Dependencies**: Task 15, Task 18
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/agent/daemonset.yaml`
-
-**Acceptance Criteria**:
-- [x] DaemonSet named `spire-agent`
-- [x] Uses image `ghcr.io/spiffe/spire-agent:1.9.6`
-- [x] Has `hostPID: true` and `hostNetwork: true`
-- [x] Mounts ConfigMap at `/run/spire/config`
-- [x] Mounts hostPath `/run/spire/agent-sockets` for Workload API
-- [x] Mounts projected ServiceAccountToken
-- [x] Mounts trust bundle ConfigMap at `/run/spire/bundle`
-- [x] Has init container to create socket directory
-- [x] Has liveness and readiness probes
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/spire/agent/daemonset.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write daemonset.yaml |
-| **Files Changed** | `deploy/spire/agent/daemonset.yaml` (created) |
-| **Issues Encountered** | Added spire-bundle ConfigMap mount for secure trust bundle |
-| **Notes** | Uses hostPID, hostNetwork, privileged container, init container for socket dir |
 
 ---
 
 ### Task 20: Create SPIRE agent kustomization
 
-**Goal**: Create kustomization.yaml to bundle all SPIRE agent resources.
-
-**Dependencies**: Tasks 15-19
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/agent/kustomization.yaml`
-
-**Acceptance Criteria**:
-- [x] Lists all agent YAML files as resources
-- [x] Valid kustomization syntax
-
-**Verification Command**:
-```bash
-kubectl kustomize deploy/spire/agent/
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write kustomization.yaml, `kubectl kustomize` validation |
-| **Files Changed** | `deploy/spire/agent/kustomization.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Uses new labels syntax with includeSelectors: false |
 
 ---
 
 ### Task 21: Create SPIRE Agent deployment script
 
-**Goal**: Create standalone script to deploy SPIRE agent only.
-
-**Dependencies**: Task 14, Tasks 15-20
+**Status**: `[x]` Completed
 
 **File**: `scripts/03-deploy-spire-agent.sh`
-
-**Acceptance Criteria**:
-- [x] Script is executable
-- [x] Checks SPIRE server is running before deploying agent
-- [x] Applies SPIRE agent manifests
-- [x] Waits for agent pod to be ready
-- [x] Includes timeout (120s)
-
-**Verification Command**:
-```bash
-chmod +x scripts/03-deploy-spire-agent.sh && bash -n scripts/03-deploy-spire-agent.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write script, `chmod +x`, split from combined script |
-| **Files Changed** | `scripts/03-deploy-spire-agent.sh` (created) |
-| **Issues Encountered** | None |
-| **Notes** | Agent-only script for clearer demo flow. Includes prerequisite check for server, agent deploy, verification |
 
 ---
 
 ### Task 22: Verify SPIRE agent deployment
 
-**Goal**: Add agent verification to deployment script.
+**Status**: `[x]` Completed
 
-**Dependencies**: Task 21
-
-**Update**: `scripts/03-deploy-spire-agent.sh`
-
-**Acceptance Criteria**:
-- [x] Script verifies agent pod is Running
-- [x] Script runs `spire-agent healthcheck` command
-- [x] Verifies agent attestation with server
-
-**Verification Command**:
-```bash
-grep -A5 "healthcheck" scripts/03-deploy-spire-agent.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Verification embedded in Task 21 script |
-| **Files Changed** | `scripts/03-deploy-spire-agent.sh` (verification embedded) |
-| **Issues Encountered** | None |
-| **Notes** | verify_spire_agent function checks pod status, healthcheck; verify_attestation lists attested agents
+**Update**: `scripts/03-deploy-spire-agent.sh` (verification embedded)
 
 ---
 
 ### Task 23: Create SPIRE root kustomization
 
-**Goal**: Create root kustomization for entire SPIRE deployment.
-
-**Dependencies**: Task 12, Task 20
+**Status**: `[x]` Completed
 
 **File**: `deploy/spire/kustomization.yaml`
 
-**Acceptance Criteria**:
-- [x] References `server/` and `agent/` as bases
-- [x] Valid kustomization syntax
+---
 
-**Verification Command**:
-```bash
-kubectl kustomize deploy/spire/
-```
+## Phase 3: User Story 1 - Happy Path Demo (Priority: P1) 🎯 MVP
 
-#### Execution Log
+**Goal**: Deploy complete system demonstrating successful mTLS-secured communication through BOTH SPIFFE integration patterns
 
-| Field | Value |
-|-------|-------|
-| **Status** | `[x]` Completed |
-| **Commands Run** | Write kustomization.yaml, `kubectl kustomize` validation |
-| **Files Changed** | `deploy/spire/kustomization.yaml` (created) |
-| **Issues Encountered** | None |
-| **Notes** | References server and agent directories |
+**Independent Test**: Deploy system, open UI at http://localhost:8080, click "Run Demo", verify both connections succeed
 
 ---
 
-## Group 4: PostgreSQL Stack (Tasks 24-32)
+### Group 4: PostgreSQL Stack (Pattern 2: spiffe-helper) - NEEDS CORRECTION ⚠️
 
-PostgreSQL must be deployed before backend can connect.
+**CRITICAL**: PostgreSQL uses **spiffe-helper sidecar** (NOT Envoy) for true end-to-end mTLS
 
 ---
 
 ### Task 24: Create PostgreSQL ServiceAccount
 
-**Goal**: Create ServiceAccount for PostgreSQL.
+**Status**: `[x]` Completed ✅
 
-**Dependencies**: Task 3 (namespaces)
+**Goal**: Create ServiceAccount for PostgreSQL.
 
 **File**: `deploy/apps/postgres/serviceaccount.yaml`
 
 **Acceptance Criteria**:
-- [ ] ServiceAccount named `postgres`
-- [ ] In namespace `demo`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/postgres/serviceaccount.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [x] ServiceAccount named `postgres`
+- [x] In namespace `demo`
 
 ---
 
 ### Task 25: Create PostgreSQL init ConfigMap
 
-**Goal**: Create ConfigMap with database initialization SQL.
+**Status**: `[x]` Completed ✅
 
-**Dependencies**: Task 3 (namespaces)
+**Goal**: Create ConfigMap with database initialization SQL.
 
 **File**: `deploy/apps/postgres/init-configmap.yaml`
 
 **Acceptance Criteria**:
-- [ ] ConfigMap named `postgres-init`
-- [ ] Contains `init.sql` with orders table schema
-- [ ] Includes seed data (5 demo orders)
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/postgres/init-configmap.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [x] ConfigMap named `postgres-init`
+- [x] Contains `init.sql` with orders table schema
+- [x] Includes seed data (5 demo orders)
 
 ---
 
-### Task 26: Create PostgreSQL Envoy ConfigMap
+### Task 26: ROLLBACK - Remove PostgreSQL Envoy ConfigMap
 
-**Goal**: Create ConfigMap with Envoy sidecar config for PostgreSQL.
+**Status**: `[x]` **COMPLETED** ✅
 
-**Dependencies**: Task 3 (namespaces)
+**Goal**: REMOVE the incorrectly implemented Envoy ConfigMap for PostgreSQL.
 
-**File**: `deploy/apps/postgres/envoy-configmap.yaml`
+**File DELETED**: `deploy/apps/postgres/envoy-configmap.yaml`
+
+**Why**: PostgreSQL should use spiffe-helper (Pattern 2), not Envoy (Pattern 1)
+
+**Execution Log**:
+```
+Date: 2025-12-19
+Command: rm deploy/apps/postgres/envoy-configmap.yaml
+Result: ✓ File deleted successfully
+```
+
+---
+
+### Task 27: ROLLBACK - Remove PostgreSQL StatefulSet with Envoy
+
+**Status**: `[x]` **COMPLETED** ✅
+
+**Goal**: REMOVE the incorrectly implemented StatefulSet with Envoy sidecar.
+
+**File DELETED**: `deploy/apps/postgres/statefulset.yaml`
+
+**Why**: Replaced with corrected version using spiffe-helper sidecar (Task 30)
+
+**Execution Log**:
+```
+Date: 2025-12-19
+Command: rm deploy/apps/postgres/statefulset.yaml
+Result: ✓ File deleted successfully
+```
+
+---
+
+### Task 28: Create PostgreSQL spiffe-helper ConfigMap (CORRECTED)
+
+**Status**: `[x]` **COMPLETED** ✅
+
+**Goal**: Create ConfigMap with spiffe-helper configuration for PostgreSQL.
+
+**File**: `deploy/apps/postgres/spiffe-helper-configmap.yaml`
 
 **Acceptance Criteria**:
-- [ ] ConfigMap named `postgres-envoy-config`
-- [ ] Contains `envoy.yaml` with inbound TCP listener on port 5433
-- [ ] Configures SDS for SPIFFE ID `spiffe://example.org/ns/demo/sa/postgres`
-- [ ] Validates backend SPIFFE ID for client auth
-- [ ] Proxies to localhost:5432
+- [x] ConfigMap named `postgres-spiffe-helper-config`
+- [x] Contains spiffe-helper.conf with SPIRE Workload API socket path
+- [x] Configures certificate output paths for PostgreSQL SSL
+- [x] Certificate file names: svid.pem, svid_key.pem, svid_bundle.pem
+- [x] Includes educational comments explaining configuration
 
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/postgres/envoy-configmap.yaml --dry-run=client
+**Execution Log**:
 ```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+Date: 2025-12-19
+File Created: deploy/apps/postgres/spiffe-helper-configmap.yaml
+Verification: kubectl apply --dry-run=client -o yaml
+Result: ✓ Valid YAML, ConfigMap created successfully
+Configuration:
+  - agentAddress: /run/spire/agent-sockets/spire-agent.sock
+  - certDir: /spiffe-certs
+  - svidFileName: svid.pem
+  - svidKeyFileName: svid_key.pem
+  - svidBundleFileName: svid_bundle.pem
+```
 
 ---
 
-### Task 27: Create PostgreSQL StatefulSet
+### Task 29: Create PostgreSQL SSL ConfigMap (NEW)
 
-**Goal**: Create StatefulSet for PostgreSQL with Envoy sidecar.
+**Status**: `[x]` **COMPLETED** ✅
 
-**Dependencies**: Task 24, Task 25, Task 26
+**Goal**: Create ConfigMap with PostgreSQL SSL configuration for client certificate authentication.
+
+**File**: `deploy/apps/postgres/ssl-configmap.yaml`
+
+**Acceptance Criteria**:
+- [x] ConfigMap named `postgres-ssl-config`
+- [x] Contains postgresql.conf snippet enabling SSL (ssl-settings.conf)
+- [x] Contains pg_hba.conf requiring client certificates (hostssl + clientcert=verify-ca)
+- [x] Configures ssl_cert_file, ssl_key_file, ssl_ca_file paths matching spiffe-helper output
+- [x] Includes educational comments for demo purposes
+
+**Execution Log**:
+```
+Date: 2025-12-19
+File Created: deploy/apps/postgres/ssl-configmap.yaml
+Verification: kubectl apply --dry-run=client
+Result: ✓ configmap/postgres-ssl-config created (dry run)
+Contents:
+  - ssl-settings.conf: SSL configuration (ssl=on, cert paths to /spiffe-certs)
+  - pg_hba.conf: Client cert auth rules (hostssl with clientcert=verify-ca)
+SSL Configuration:
+  - ssl_cert_file = /spiffe-certs/svid.pem
+  - ssl_key_file = /spiffe-certs/svid_key.pem
+  - ssl_ca_file = /spiffe-certs/svid_bundle.pem
+  - ssl_min_protocol_version = TLSv1.2
+```
+
+---
+
+### Task 30: Create PostgreSQL StatefulSet with spiffe-helper (CORRECTED)
+
+**Status**: `[x]` **COMPLETED** ✅
+
+**Goal**: Create StatefulSet for PostgreSQL with spiffe-helper sidecar (NOT Envoy).
 
 **File**: `deploy/apps/postgres/statefulset.yaml`
 
 **Acceptance Criteria**:
-- [ ] StatefulSet named `postgres`
-- [ ] Uses image `postgres:15`
-- [ ] Has postgres container on port 5432
-- [ ] Has envoy sidecar on port 5433
-- [ ] Mounts init ConfigMap at `/docker-entrypoint-initdb.d`
-- [ ] Mounts envoy ConfigMap at `/etc/envoy`
-- [ ] Mounts SPIRE agent socket hostPath
-- [ ] Sets POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD env vars
+- [x] StatefulSet named `postgres`
+- [x] Uses image `postgres:15`
+- [x] Has **postgres** container on port 5432
+- [x] Has **spiffe-helper** sidecar (ghcr.io/spiffe/spiffe-helper:0.8.0)
+- [x] Has **wait-for-certs** init container (ensures certs exist before PostgreSQL starts)
+- [x] Mounts init ConfigMap at `/docker-entrypoint-initdb.d`
+- [x] Mounts spiffe-helper ConfigMap at `/etc/spiffe-helper`
+- [x] Mounts SSL ConfigMap for pg_hba.conf
+- [x] Mounts shared volume at `/spiffe-certs` (emptyDir with Memory medium)
+- [x] Mounts SPIRE agent socket hostPath (read-only)
+- [x] PostgreSQL configured with SSL via command-line args
+- [x] spiffe-helper runs with `-config /etc/spiffe-helper/spiffe-helper.conf`
 
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/postgres/statefulset.yaml --dry-run=client
+**Execution Log**:
 ```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+Date: 2025-12-19
+File Created: deploy/apps/postgres/statefulset.yaml
+Verification: kubectl apply --dry-run=client
+Result: ✓ statefulset.apps/postgres created (dry run)
+Architecture:
+  - InitContainer: wait-for-certs (busybox:1.36) - waits for certificates
+  - Container 1: postgres (postgres:15) - database with SSL enabled
+  - Container 2: spiffe-helper (ghcr.io/spiffe/spiffe-helper:0.8.0) - fetches SVID
+Volumes:
+  - spiffe-certs: emptyDir (Memory) - shared cert storage
+  - spiffe-helper-config: ConfigMap - spiffe-helper.conf
+  - ssl-config: ConfigMap - pg_hba.conf
+  - init-sql: ConfigMap - database init
+  - spire-agent-socket: hostPath - SPIRE agent
+PostgreSQL SSL Args:
+  - ssl=on
+  - ssl_cert_file=/spiffe-certs/svid.pem
+  - ssl_key_file=/spiffe-certs/svid_key.pem
+  - ssl_ca_file=/spiffe-certs/svid_bundle.pem
+```
 
 ---
 
-### Task 28: Create PostgreSQL Service
+### Task 31: Create PostgreSQL Service
 
-**Goal**: Create headless Service for PostgreSQL.
-
-**Dependencies**: Task 27
+**Status**: `[x]` Completed ✅ (No changes needed - exposes port 5432)
 
 **File**: `deploy/apps/postgres/service.yaml`
 
-**Acceptance Criteria**:
-- [ ] Service named `postgres`
-- [ ] ClusterIP: None (headless)
-- [ ] Exposes port 5433 (Envoy mTLS port)
-- [ ] Selector matches `app: postgres`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/postgres/service.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+**Note**: Existing service is correct - exposes port 5432 directly (no Envoy port needed)
 
 ---
 
-### Task 29: Create PostgreSQL kustomization
+### Task 32: Update PostgreSQL kustomization
 
-**Goal**: Create kustomization.yaml to bundle PostgreSQL resources.
+**Status**: `[x]` **COMPLETED** ✅
 
-**Dependencies**: Tasks 24-28
+**Goal**: Update kustomization to reference corrected manifests.
 
 **File**: `deploy/apps/postgres/kustomization.yaml`
 
 **Acceptance Criteria**:
-- [ ] Lists all postgres YAML files as resources
-- [ ] Valid kustomization syntax
+- [x] References serviceaccount.yaml
+- [x] References init-configmap.yaml
+- [x] References spiffe-helper-configmap.yaml (NEW)
+- [x] References ssl-configmap.yaml (NEW)
+- [x] References statefulset.yaml (corrected version)
+- [x] References service.yaml
+- [x] Does NOT reference envoy-configmap.yaml (removed)
 
-**Verification Command**:
-```bash
-kubectl kustomize deploy/apps/postgres/
+**Execution Log**:
 ```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+Date: 2025-12-19
+File Updated: deploy/apps/postgres/kustomization.yaml
+Verification: kubectl kustomize deploy/apps/postgres/
+Result: ✓ Kustomization builds successfully
+Resources Generated:
+  - 1 ServiceAccount
+  - 3 ConfigMaps (init, spiffe-helper, ssl)
+  - 1 StatefulSet (with spiffe-helper sidecar)
+  - 1 Service
+```
 
 ---
 
-### Task 30: Create apps deployment script (postgres section)
+### Task 33: Update apps deployment script (postgres section - CORRECTED)
 
-**Goal**: Create script to deploy demo applications starting with PostgreSQL.
+**Status**: `[x]` **COMPLETED** ✅
 
-**Dependencies**: Task 29
+**Goal**: Update script to deploy PostgreSQL with spiffe-helper verification (NOT Envoy).
 
-**File**: `scripts/03-deploy-apps.sh` (postgres section)
+**File**: `scripts/04-deploy-apps.sh`
 
 **Acceptance Criteria**:
-- [ ] Script is executable
-- [ ] Applies PostgreSQL manifests
-- [ ] Waits for postgres-0 to be ready
-- [ ] Includes timeout (120s)
+- [x] Applies PostgreSQL manifests via kustomize
+- [x] Waits for postgres-0 pod to be ready (180s timeout for cert init)
+- [x] Verifies both containers: postgres + spiffe-helper
+- [x] Checks spiffe-helper is writing certificates to /spiffe-certs
+- [x] Verifies PostgreSQL SSL configuration is active
+- [x] Tests database connectivity and orders table
 
-**Verification Command**:
-```bash
-chmod +x scripts/03-deploy-apps.sh && bash -n scripts/03-deploy-apps.sh
+**Execution Log**:
+```
+Date: 2025-12-19
+File Updated: scripts/04-deploy-apps.sh
+Changes Made:
+  - Changed "Envoy sidecar" → "spiffe-helper sidecar (Pattern 2)"
+  - Replaced verify_postgres_envoy() → verify_postgres_spiffe_helper()
+  - Added verify_postgres_ssl() function
+  - Updated timeout from 120s to 180s (init container waits for certs)
+  - Updated connection string port 5433 → 5432 (direct PostgreSQL, not Envoy)
+Functions Implemented:
+  - check_prerequisites(): Verify SPIRE server/agent running
+  - deploy_postgres(): Apply kustomize and wait for ready
+  - verify_postgres(): Check DB, table, and orders count
+  - verify_postgres_spiffe_helper(): Check container and cert files
+  - verify_postgres_ssl(): Check SSL status via SHOW ssl
 ```
 
-#### Execution Log
+---
 
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+### Group 5: Backend Service (Both Patterns) - NOT STARTED
+
+**CRITICAL**: Backend has TWO sidecars - Envoy (Pattern 1: inbound from frontend) + spiffe-helper (Pattern 2: outbound to PostgreSQL)
 
 ---
 
-### Task 31: Verify PostgreSQL deployment
+### Task 34: Create backend Order model
 
-**Goal**: Add PostgreSQL verification to deployment script.
-
-**Dependencies**: Task 30
-
-**Update**: `scripts/03-deploy-apps.sh`
-
-**Acceptance Criteria**:
-- [ ] Verifies postgres pod is Running
-- [ ] Runs `pg_isready` command in postgres container
-- [ ] Verifies demo database exists
-
-**Verification Command**:
-```bash
-grep -A5 "pg_isready" scripts/03-deploy-apps.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
----
-
-### Task 32: Verify PostgreSQL Envoy sidecar
-
-**Goal**: Add Envoy sidecar verification for PostgreSQL.
-
-**Dependencies**: Task 31
-
-**Update**: `scripts/03-deploy-apps.sh`
-
-**Acceptance Criteria**:
-- [ ] Verifies envoy container is running
-- [ ] Checks envoy admin endpoint responds
-- [ ] Verifies SDS cluster is connected
-
-**Verification Command**:
-```bash
-grep -A5 "envoy" scripts/03-deploy-apps.sh | grep -i "admin\|cluster"
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
----
-
-## Group 5: Backend Service (Tasks 33-44)
-
-Backend must be deployed before frontend can call it.
-
----
-
-### Task 33: Create backend models package
+**Status**: `[ ]` NOT STARTED
 
 **Goal**: Create Go models for Order entity.
-
-**Dependencies**: Task 4 (go.mod)
 
 **File**: `internal/backend/models.go`
 
@@ -1041,61 +549,46 @@ Backend must be deployed before frontend can call it.
 - [ ] Package named `backend`
 - [ ] Order struct with ID, Description, Status, CreatedAt fields
 - [ ] JSON tags on all fields
-- [ ] Status constants defined
+- [ ] Status constants defined (pending, processing, completed, failed)
 
 **Verification Command**:
 ```bash
 go build ./internal/backend/...
 ```
 
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
 ---
 
-### Task 34: Create backend database package
+### Task 35: Create backend database package
 
-**Goal**: Create database connection and query logic.
+**Status**: `[ ]` NOT STARTED
 
-**Dependencies**: Task 33
+**Goal**: Create database connection logic with PostgreSQL client certificate authentication.
 
 **File**: `internal/backend/db.go`
 
 **Acceptance Criteria**:
 - [ ] Function to create DB connection from env vars
+- [ ] Reads client certificates from `/spiffe-certs` (written by spiffe-helper)
+- [ ] Configures TLS with client cert authentication
 - [ ] Function to list all orders
 - [ ] Function to check database health
-- [ ] Uses `lib/pq` driver
+- [ ] Uses `lib/pq` driver with sslmode=require
 
-**Verification Command**:
-```bash
-go build ./internal/backend/...
+**Connection String Example**:
+```go
+connStr := fmt.Sprintf(
+  "host=%s port=%s user=%s password=%s dbname=%s sslmode=require sslcert=/spiffe-certs/svid.pem sslkey=/spiffe-certs/svid_key.pem sslrootcert=/spiffe-certs/svid_bundle.pem",
+  dbHost, dbPort, dbUser, dbPass, dbName,
+)
 ```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
 
 ---
 
-### Task 35: Create backend handlers package
+### Task 36: Create backend handlers package
+
+**Status**: `[ ]` NOT STARTED
 
 **Goal**: Create HTTP handlers for backend API.
-
-**Dependencies**: Task 34
 
 **File**: `internal/backend/handlers.go`
 
@@ -1103,63 +596,33 @@ go build ./internal/backend/...
 - [ ] Handler for GET /health
 - [ ] Handler for GET /api/orders
 - [ ] Handler for GET /api/demo
-- [ ] Returns JSON responses
+- [ ] Returns JSON responses per contracts/backend-api.yaml
 - [ ] Includes error handling
-
-**Verification Command**:
-```bash
-go build ./internal/backend/...
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
 
 ---
 
-### Task 36: Create backend main entry point
+### Task 37: Create backend main entry point
+
+**Status**: `[ ]` NOT STARTED
 
 **Goal**: Create main.go for backend service.
-
-**Dependencies**: Task 35
 
 **File**: `cmd/backend/main.go`
 
 **Acceptance Criteria**:
 - [ ] Reads config from environment variables
-- [ ] Initializes database connection
+- [ ] Initializes database connection with client cert auth
 - [ ] Registers HTTP handlers
-- [ ] Starts HTTP server on configurable port (default 9090)
+- [ ] Starts HTTP server on port 9090
 - [ ] Graceful shutdown handling
-
-**Verification Command**:
-```bash
-go build -o /dev/null ./cmd/backend/...
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
 
 ---
 
-### Task 37: Create backend Dockerfile
+### Task 38: Create backend Dockerfile
+
+**Status**: `[ ]` NOT STARTED
 
 **Goal**: Create multi-stage Dockerfile for backend.
-
-**Dependencies**: Task 36
 
 **File**: `docker/backend.Dockerfile`
 
@@ -1170,910 +633,526 @@ go build -o /dev/null ./cmd/backend/...
 - [ ] Sets non-root user
 - [ ] Exposes port 9090
 
-**Verification Command**:
-```bash
-docker build -f docker/backend.Dockerfile -t backend:test . --dry-run 2>/dev/null || cat docker/backend.Dockerfile
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
 ---
 
-### Task 38: Create backend ServiceAccount
+### Task 39: Create backend ServiceAccount
 
-**Goal**: Create ServiceAccount for backend workload.
-
-**Dependencies**: Task 3 (namespaces)
+**Status**: `[ ]` NOT STARTED
 
 **File**: `deploy/apps/backend/serviceaccount.yaml`
 
-**Acceptance Criteria**:
-- [ ] ServiceAccount named `backend`
-- [ ] In namespace `demo`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/backend/serviceaccount.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
 ---
 
-### Task 39: Create backend Envoy ConfigMap
+### Task 40: Create backend Envoy ConfigMap (Pattern 1)
 
-**Goal**: Create ConfigMap with Envoy sidecar config for backend.
+**Status**: `[ ]` NOT STARTED
 
-**Dependencies**: Task 3 (namespaces)
+**Goal**: Create Envoy config for inbound mTLS from frontend with RBAC.
 
 **File**: `deploy/apps/backend/envoy-configmap.yaml`
 
 **Acceptance Criteria**:
-- [ ] ConfigMap named `backend-envoy-config`
 - [ ] Inbound listener on port 8080 with mTLS
 - [ ] RBAC filter allowing only frontend SPIFFE ID
-- [ ] Outbound listener on port 5432 for PostgreSQL
-- [ ] SDS config for `spiffe://example.org/ns/demo/sa/backend`
-- [ ] Upstream mTLS to PostgreSQL Envoy
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/backend/envoy-configmap.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] SDS config for backend SVID
+- [ ] Proxies to localhost:9090 (backend app)
+- [ ] Does NOT handle PostgreSQL connection (that's spiffe-helper's job)
 
 ---
 
-### Task 40: Create backend Deployment
+### Task 41: Create backend spiffe-helper ConfigMap (Pattern 2)
 
-**Goal**: Create Deployment for backend with Envoy sidecar.
+**Status**: `[ ]` NOT STARTED
 
-**Dependencies**: Task 37, Task 38, Task 39
+**Goal**: Create spiffe-helper config for PostgreSQL client certificates.
+
+**File**: `deploy/apps/backend/spiffe-helper-configmap.yaml`
+
+**Acceptance Criteria**:
+- [ ] ConfigMap named `backend-spiffe-helper-config`
+- [ ] Configures certificate output to `/spiffe-certs`
+- [ ] Sets SPIFFE ID: `spiffe://example.org/ns/demo/sa/backend`
+- [ ] Matches PostgreSQL spiffe-helper configuration format
+
+---
+
+### Task 42: Create backend Deployment (with BOTH sidecars)
+
+**Status**: `[ ]` NOT STARTED
+
+**Goal**: Create Deployment with backend + Envoy + spiffe-helper sidecars.
 
 **File**: `deploy/apps/backend/deployment.yaml`
 
 **Acceptance Criteria**:
 - [ ] Deployment named `backend`
-- [ ] Uses locally built backend image
-- [ ] Has backend container on port 9090
-- [ ] Has envoy sidecar on port 8080
-- [ ] Mounts envoy ConfigMap
-- [ ] Mounts SPIRE agent socket hostPath
-- [ ] Sets DB_HOST=127.0.0.1 (via Envoy)
+- [ ] **backend** container on port 9090
+- [ ] **envoy** sidecar on port 8080 (Pattern 1: inbound from frontend)
+- [ ] **spiffe-helper** sidecar (Pattern 2: writes certs for PostgreSQL)
+- [ ] Shared volume `/spiffe-certs` for backend + spiffe-helper
+- [ ] Mounts SPIRE agent socket
+- [ ] Sets DB_HOST=postgres.demo.svc.cluster.local
 - [ ] Sets DB_PORT=5432
 
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/backend/deployment.yaml --dry-run=client
+**Container Structure**:
+```yaml
+containers:
+- name: backend
+  image: backend:latest
+  ports:
+  - containerPort: 9090
+  volumeMounts:
+  - name: spiffe-certs
+    mountPath: /spiffe-certs
+    readOnly: true
+- name: envoy
+  # ... Envoy sidecar for Pattern 1
+- name: spiffe-helper
+  # ... spiffe-helper sidecar for Pattern 2
 ```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
 
 ---
 
-### Task 41: Create backend Service
+### Task 43: Create backend Service
 
-**Goal**: Create Service for backend.
-
-**Dependencies**: Task 40
+**Status**: `[ ]` NOT STARTED
 
 **File**: `deploy/apps/backend/service.yaml`
 
 **Acceptance Criteria**:
-- [ ] Service named `backend`
-- [ ] Type ClusterIP
-- [ ] Exposes port 8080 (Envoy mTLS)
-- [ ] Selector matches `app: backend`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/backend/service.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] Exposes port 8080 (Envoy mTLS port for frontend connections)
 
 ---
 
-### Task 42: Create backend kustomization
+### Task 44: Create backend kustomization
 
-**Goal**: Create kustomization.yaml to bundle backend resources.
-
-**Dependencies**: Tasks 38-41
+**Status**: `[ ]` NOT STARTED
 
 **File**: `deploy/apps/backend/kustomization.yaml`
 
-**Acceptance Criteria**:
-- [ ] Lists all backend YAML files as resources
-- [ ] Valid kustomization syntax
+---
 
-**Verification Command**:
-```bash
-kubectl kustomize deploy/apps/backend/
-```
+### Task 45: Create backend Dockerfile
 
-#### Execution Log
+**Status**: `[ ]` NOT STARTED
 
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+**File**: `docker/backend.Dockerfile`
 
 ---
 
-### Task 43: Update apps deployment script (backend section)
+### Group 6: Frontend Service (Pattern 1: Envoy SDS) - NOT STARTED
 
-**Goal**: Add backend deployment to script.
-
-**Dependencies**: Task 31, Task 42
-
-**Update**: `scripts/03-deploy-apps.sh`
-
-**Acceptance Criteria**:
-- [ ] Builds backend Docker image
-- [ ] Loads image into kind cluster
-- [ ] Applies backend manifests
-- [ ] Waits for backend pod to be ready
-
-**Verification Command**:
-```bash
-grep -A10 "backend" scripts/03-deploy-apps.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+**CRITICAL**: Frontend uses ONLY Envoy sidecar (no spiffe-helper needed)
 
 ---
 
-### Task 44: Verify backend deployment
+### Task 46: Create frontend models
 
-**Goal**: Add backend verification to deployment script.
-
-**Dependencies**: Task 43
-
-**Update**: `scripts/03-deploy-apps.sh`
-
-**Acceptance Criteria**:
-- [ ] Verifies backend pod is Running
-- [ ] Checks envoy admin endpoint responds
-- [ ] Verifies SVID is loaded (via envoy /certs)
-
-**Verification Command**:
-```bash
-grep -A5 "backend.*verify" scripts/03-deploy-apps.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
----
-
-## Group 6: Frontend Service (Tasks 45-56)
-
-Frontend is the final workload in the chain.
-
----
-
-### Task 45: Create frontend models package
-
-**Goal**: Create Go models for frontend API responses.
-
-**Dependencies**: Task 4 (go.mod)
+**Status**: `[ ]` NOT STARTED
 
 **File**: `internal/frontend/models.go`
 
 **Acceptance Criteria**:
-- [ ] Package named `frontend`
 - [ ] DemoResult struct
 - [ ] ConnectionStatus struct
 - [ ] Order struct (mirrors backend)
-- [ ] JSON tags on all fields
-
-**Verification Command**:
-```bash
-go build ./internal/frontend/...
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] JSON tags per contracts/frontend-api.yaml
 
 ---
 
-### Task 46: Create frontend handlers package
+### Task 47: Create frontend handlers
 
-**Goal**: Create HTTP handlers for frontend.
-
-**Dependencies**: Task 45
+**Status**: `[ ]` NOT STARTED
 
 **File**: `internal/frontend/handlers.go`
 
 **Acceptance Criteria**:
-- [ ] Handler to serve index.html at /
-- [ ] Handler to serve static files at /static/
-- [ ] Handler for GET /api/demo (calls backend)
+- [ ] Handler for / (serves index.html)
+- [ ] Handler for /static/* (serves assets)
+- [ ] Handler for GET /api/demo (calls backend via Envoy)
 - [ ] Handler for GET /api/health
-- [ ] HTTP client for backend calls (via localhost Envoy)
-
-**Verification Command**:
-```bash
-go build ./internal/frontend/...
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] HTTP client calls http://127.0.0.1:8001 (local Envoy proxy)
 
 ---
 
-### Task 47: Create frontend HTML template
+### Task 48: Create frontend HTML UI
 
-**Goal**: Create main HTML page for demo UI.
-
-**Dependencies**: None
+**Status**: `[ ]` NOT STARTED
 
 **File**: `internal/frontend/static/index.html`
 
 **Acceptance Criteria**:
-- [ ] Clean, simple HTML structure
 - [ ] "Run Demo" button
-- [ ] Status display area for frontend-to-backend
-- [ ] Status display area for backend-to-database
-- [ ] Orders list display area
-- [ ] Basic styling (inline or linked CSS)
-
-**Verification Command**:
-```bash
-cat internal/frontend/static/index.html | head -30
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] Status display for frontend-to-backend (Pattern 1)
+- [ ] Status display for backend-to-database (Pattern 2)
+- [ ] Orders list display
 
 ---
 
-### Task 48: Create frontend CSS styles
+### Task 49: Create frontend CSS
 
-**Goal**: Create CSS for demo UI styling.
-
-**Dependencies**: Task 47
+**Status**: `[ ]` NOT STARTED
 
 **File**: `internal/frontend/static/styles.css`
 
-**Acceptance Criteria**:
-- [ ] Clean, readable layout
-- [ ] Success state styling (green)
-- [ ] Failure state styling (red)
-- [ ] Loading state styling
-- [ ] Responsive design (works on laptop)
-
-**Verification Command**:
-```bash
-cat internal/frontend/static/styles.css
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
 ---
 
-### Task 49: Create frontend JavaScript
+### Task 50: Create frontend JavaScript
 
-**Goal**: Create JavaScript for demo interaction.
-
-**Dependencies**: Task 47
+**Status**: `[ ]` NOT STARTED
 
 **File**: `internal/frontend/static/app.js`
 
 **Acceptance Criteria**:
-- [ ] Function to call /api/demo endpoint
-- [ ] Updates UI with success/failure status
-- [ ] Displays orders list on success
-- [ ] Shows error message on failure
-- [ ] Loading indicator during request
-
-**Verification Command**:
-```bash
-cat internal/frontend/static/app.js
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] Calls /api/demo endpoint
+- [ ] Updates UI with connection status for BOTH patterns
+- [ ] Displays orders on success
 
 ---
 
-### Task 50: Create frontend main entry point
+### Task 51: Create frontend main entry point
 
-**Goal**: Create main.go for frontend service.
-
-**Dependencies**: Task 46
+**Status**: `[ ]` NOT STARTED
 
 **File**: `cmd/frontend/main.go`
 
 **Acceptance Criteria**:
-- [ ] Reads config from environment variables
-- [ ] Configures backend URL (default localhost:8001)
-- [ ] Registers HTTP handlers
-- [ ] Embeds static files using embed.FS
-- [ ] Starts HTTP server on configurable port (default 8080)
-- [ ] Graceful shutdown handling
-
-**Verification Command**:
-```bash
-go build -o /dev/null ./cmd/frontend/...
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] Starts HTTP server on port 8080
+- [ ] Serves static assets
+- [ ] Proxies /api/demo to backend via Envoy
 
 ---
 
-### Task 51: Create frontend Dockerfile
+### Task 52: Create frontend Dockerfile
 
-**Goal**: Create multi-stage Dockerfile for frontend.
-
-**Dependencies**: Task 50
+**Status**: `[ ]` NOT STARTED
 
 **File**: `docker/frontend.Dockerfile`
 
-**Acceptance Criteria**:
-- [ ] Uses golang:1.21-alpine as builder
-- [ ] Uses alpine:3.19 as runtime
-- [ ] Copies only binary to final image
-- [ ] Sets non-root user
-- [ ] Exposes port 8080
-
-**Verification Command**:
-```bash
-cat docker/frontend.Dockerfile
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
 ---
 
-### Task 52: Create frontend ServiceAccount
+### Task 53: Create frontend ServiceAccount
 
-**Goal**: Create ServiceAccount for frontend workload.
-
-**Dependencies**: Task 3 (namespaces)
+**Status**: `[ ]` NOT STARTED
 
 **File**: `deploy/apps/frontend/serviceaccount.yaml`
 
-**Acceptance Criteria**:
-- [ ] ServiceAccount named `frontend`
-- [ ] In namespace `demo`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/frontend/serviceaccount.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
 ---
 
-### Task 53: Create frontend Envoy ConfigMap
+### Task 54: Create frontend Envoy ConfigMap (Pattern 1)
 
-**Goal**: Create ConfigMap with Envoy sidecar config for frontend.
+**Status**: `[ ]` NOT STARTED
 
-**Dependencies**: Task 3 (namespaces)
+**Goal**: Create Envoy config for outbound mTLS to backend.
 
 **File**: `deploy/apps/frontend/envoy-configmap.yaml`
 
 **Acceptance Criteria**:
-- [ ] ConfigMap named `frontend-envoy-config`
 - [ ] Outbound listener on port 8001 for backend calls
-- [ ] SDS config for `spiffe://example.org/ns/demo/sa/frontend`
+- [ ] SDS config for frontend SVID
 - [ ] Upstream mTLS to backend.demo.svc.cluster.local:8080
 - [ ] Validates backend SPIFFE ID
 
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/frontend/envoy-configmap.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
 ---
 
-### Task 54: Create frontend Deployment
+### Task 55: Create frontend Deployment (with Envoy sidecar)
 
-**Goal**: Create Deployment for frontend with Envoy sidecar.
-
-**Dependencies**: Task 51, Task 52, Task 53
+**Status**: `[ ]` NOT STARTED
 
 **File**: `deploy/apps/frontend/deployment.yaml`
 
 **Acceptance Criteria**:
-- [ ] Deployment named `frontend`
-- [ ] Uses locally built frontend image
-- [ ] Has frontend container on port 8080
-- [ ] Has envoy sidecar
-- [ ] Mounts envoy ConfigMap
-- [ ] Mounts SPIRE agent socket hostPath
+- [ ] **frontend** container on port 8080
+- [ ] **envoy** sidecar (Pattern 1 only - no spiffe-helper needed)
 - [ ] Sets BACKEND_URL=http://127.0.0.1:8001
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/frontend/deployment.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
 
 ---
 
-### Task 55: Create frontend Service
+### Task 56: Create frontend Service
 
-**Goal**: Create NodePort Service for frontend.
-
-**Dependencies**: Task 54
+**Status**: `[ ]` NOT STARTED
 
 **File**: `deploy/apps/frontend/service.yaml`
 
 **Acceptance Criteria**:
-- [ ] Service named `frontend`
-- [ ] Type NodePort
+- [ ] Type: NodePort
 - [ ] Port 8080, NodePort 30080
-- [ ] Selector matches `app: frontend`
-
-**Verification Command**:
-```bash
-kubectl apply -f deploy/apps/frontend/service.yaml --dry-run=client
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
 
 ---
 
-### Task 56: Create frontend kustomization
+### Task 57: Create frontend kustomization
 
-**Goal**: Create kustomization.yaml to bundle frontend resources.
-
-**Dependencies**: Tasks 52-55
+**Status**: `[ ]` NOT STARTED
 
 **File**: `deploy/apps/frontend/kustomization.yaml`
 
+---
+
+### Group 7: SPIRE Registration & Deployment Automation
+
+### Task 58: Create SPIRE registration script
+
+**Status**: `[ ]` NOT STARTED
+
+**Goal**: Register all workload SPIFFE IDs.
+
+**File**: `scripts/05-register-entries.sh`
+
 **Acceptance Criteria**:
-- [ ] Lists all frontend YAML files as resources
-- [ ] Valid kustomization syntax
-
-**Verification Command**:
-```bash
-kubectl kustomize deploy/apps/frontend/
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] Registers frontend: `spiffe://example.org/ns/demo/sa/frontend`
+- [ ] Registers backend: `spiffe://example.org/ns/demo/sa/backend`
+- [ ] Registers postgres: `spiffe://example.org/ns/demo/sa/postgres`
+- [ ] Uses k8s:ns:demo + k8s:sa:{name} selectors
+- [ ] Includes DNS SANs
 
 ---
 
-## Group 7: Registration & Final Scripts (Tasks 57-62)
+### Task 59: Update apps deployment script (complete)
 
-SPIRE registration entries must be created after all workloads exist.
+**Status**: `[ ]` NOT STARTED
 
----
+**Goal**: Complete script to deploy all apps in order.
 
-### Task 57: Update apps deployment script (frontend section)
-
-**Goal**: Add frontend deployment to script.
-
-**Dependencies**: Task 44, Task 56
-
-**Update**: `scripts/03-deploy-apps.sh`
+**File**: `scripts/04-deploy-apps.sh`
 
 **Acceptance Criteria**:
-- [ ] Builds frontend Docker image
-- [ ] Loads image into kind cluster
-- [ ] Applies frontend manifests
-- [ ] Waits for frontend pod to be ready
-
-**Verification Command**:
-```bash
-grep -A10 "frontend" scripts/03-deploy-apps.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
----
-
-### Task 58: Create apps root kustomization
-
-**Goal**: Create root kustomization for all demo apps.
-
-**Dependencies**: Task 29, Task 42, Task 56
-
-**File**: `deploy/apps/kustomization.yaml`
-
-**Acceptance Criteria**:
-- [ ] References `postgres/`, `backend/`, `frontend/` as bases
-- [ ] Valid kustomization syntax
-
-**Verification Command**:
-```bash
-kubectl kustomize deploy/apps/
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
----
-
-### Task 59: Create SPIRE registration script
-
-**Goal**: Create script to register all workload entries in SPIRE.
-
-**Dependencies**: Task 22 (SPIRE agent running)
-
-**File**: `scripts/04-register-entries.sh`
-
-**Acceptance Criteria**:
-- [ ] Script is executable
-- [ ] Dynamically discovers node name for parent ID
-- [ ] Registers frontend SPIFFE ID with k8s:ns:demo, k8s:sa:frontend selectors
-- [ ] Registers backend SPIFFE ID with k8s:ns:demo, k8s:sa:backend selectors
-- [ ] Registers postgres SPIFFE ID with k8s:ns:demo, k8s:sa:postgres selectors
-- [ ] Includes DNS SANs for each entry
-- [ ] Verifies entries were created
-
-**Verification Command**:
-```bash
-chmod +x scripts/04-register-entries.sh && bash -n scripts/04-register-entries.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] Deploys PostgreSQL (with spiffe-helper verification)
+- [ ] Builds and deploys Backend (verifies both Envoy + spiffe-helper)
+- [ ] Builds and deploys Frontend (verifies Envoy)
+- [ ] Sequential deployment with readiness checks
 
 ---
 
 ### Task 60: Create demo-all wrapper script
 
-**Goal**: Create one-command script to deploy entire demo.
-
-**Dependencies**: Task 2, Task 14, Task 22, Task 57, Task 59
+**Status**: `[ ]` NOT STARTED
 
 **File**: `scripts/demo-all.sh`
 
 **Acceptance Criteria**:
-- [ ] Script is executable
-- [ ] Calls scripts in order: 01, 02, 03, 04
-- [ ] Includes overall status checks between scripts
-- [ ] Prints final access URL (http://localhost:8080)
-- [ ] Handles failures gracefully with clear error messages
-
-**Verification Command**:
-```bash
-chmod +x scripts/demo-all.sh && bash -n scripts/demo-all.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] Runs 01-create-cluster.sh
+- [ ] Runs 02-deploy-spire-server.sh
+- [ ] Runs 03-deploy-spire-agent.sh
+- [ ] Runs 04-deploy-apps.sh
+- [ ] Runs 05-register-entries.sh
+- [ ] Prints final URL: http://localhost:8080
 
 ---
 
-### Task 61: Verify frontend deployment and access
+### Task 61: End-to-end demo verification
 
-**Goal**: Add final verification to demo-all script.
-
-**Dependencies**: Task 60
-
-**Update**: `scripts/demo-all.sh`
-
-**Acceptance Criteria**:
-- [ ] Verifies frontend pod is Running
-- [ ] Verifies NodePort service is accessible
-- [ ] Curls http://localhost:8080/api/health
-- [ ] Prints success message with URL
-
-**Verification Command**:
-```bash
-grep -A10 "localhost:8080" scripts/demo-all.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
-
----
-
-### Task 62: End-to-end demo verification
+**Status**: `[ ]` NOT STARTED
 
 **Goal**: Add E2E test to demo-all script.
-
-**Dependencies**: Task 61
 
 **Update**: `scripts/demo-all.sh`
 
 **Acceptance Criteria**:
 - [ ] Calls /api/demo endpoint
-- [ ] Verifies frontend_to_backend.success is true
-- [ ] Verifies backend_to_database.success is true
-- [ ] Prints orders count
-- [ ] Overall pass/fail status
-
-**Verification Command**:
-```bash
-grep -A15 "api/demo" scripts/demo-all.sh
-```
-
-#### Execution Log
-
-| Field | Value |
-|-------|-------|
-| **Status** | `[ ]` Not Started |
-| **Commands Run** | |
-| **Files Changed** | |
-| **Issues Encountered** | |
-| **Notes** | |
+- [ ] Verifies frontend_to_backend.success (Pattern 1: Envoy SDS)
+- [ ] Verifies backend_to_database.success (Pattern 2: spiffe-helper)
+- [ ] Validates PostgreSQL logs show client certificate authentication
+- [ ] Validates Envoy logs show SPIFFE ID validation
 
 ---
 
-## Dependency Graph Summary
+## Phase 4: User Story 2 - RBAC Policy Denial Demo (Priority: P2)
 
-```
-Group 1 (Foundation)
-├── Task 1: kind config
-├── Task 2: cluster script ──► Task 1
-├── Task 3: namespaces
-├── Task 4: go.mod
-└── Task 5: cleanup script
+### Task 62: Document RBAC modification procedure
 
-Group 2 (SPIRE Server) ──► Task 3
-├── Tasks 6-8: RBAC
-├── Task 9: ConfigMap
-├── Task 10: StatefulSet ──► Task 6, 9
-├── Task 11: Service ──► Task 10
-├── Task 12: kustomization ──► Tasks 6-11
-├── Task 13: deploy script ──► Task 12
-└── Task 14: verify ──► Task 13
+**Status**: `[ ]` NOT STARTED
 
-Group 3 (SPIRE Agent) ──► Task 14
-├── Tasks 15-17: RBAC
-├── Task 18: ConfigMap
-├── Task 19: DaemonSet ──► Task 15, 18
-├── Task 20: kustomization ──► Tasks 15-19
-├── Task 21: deploy script ──► Task 20
-├── Task 22: verify ──► Task 21
-└── Task 23: root kustomization ──► Task 12, 20
+**File**: Update `specs/001-spire-spiffe-demo/quickstart.md`
 
-Group 4 (PostgreSQL) ──► Task 3
-├── Task 24: ServiceAccount
-├── Task 25: init ConfigMap
-├── Task 26: Envoy ConfigMap
-├── Task 27: StatefulSet ──► Tasks 24-26
-├── Task 28: Service ──► Task 27
-├── Task 29: kustomization ──► Tasks 24-28
-├── Task 30: deploy script ──► Task 29
-├── Task 31: verify ──► Task 30
-└── Task 32: verify envoy ──► Task 31
-
-Group 5 (Backend) ──► Task 4, Task 32
-├── Task 33: models
-├── Task 34: db ──► Task 33
-├── Task 35: handlers ──► Task 34
-├── Task 36: main ──► Task 35
-├── Task 37: Dockerfile ──► Task 36
-├── Task 38: ServiceAccount
-├── Task 39: Envoy ConfigMap
-├── Task 40: Deployment ──► Tasks 37-39
-├── Task 41: Service ──► Task 40
-├── Task 42: kustomization ──► Tasks 38-41
-├── Task 43: deploy script ──► Task 42
-└── Task 44: verify ──► Task 43
-
-Group 6 (Frontend) ──► Task 4, Task 44
-├── Task 45: models
-├── Task 46: handlers ──► Task 45
-├── Task 47: HTML
-├── Task 48: CSS ──► Task 47
-├── Task 49: JS ──► Task 47
-├── Task 50: main ──► Task 46
-├── Task 51: Dockerfile ──► Task 50
-├── Task 52: ServiceAccount
-├── Task 53: Envoy ConfigMap
-├── Task 54: Deployment ──► Tasks 51-53
-├── Task 55: Service ──► Task 54
-└── Task 56: kustomization ──► Tasks 52-55
-
-Group 7 (Registration & Scripts) ──► All Groups
-├── Task 57: deploy script frontend ──► Task 56
-├── Task 58: apps kustomization ──► Tasks 29, 42, 56
-├── Task 59: registration script ──► Task 22
-├── Task 60: demo-all script ──► Tasks 2, 14, 22, 57, 59
-├── Task 61: verify frontend ──► Task 60
-└── Task 62: E2E verification ──► Task 61
-```
+**Acceptance Criteria**:
+- [ ] Documents how to modify backend Envoy RBAC to deny frontend
+- [ ] Shows expected failure behavior
+- [ ] Documents restoration procedure
 
 ---
 
-## Execution Notes
+### Task 63: Test RBAC denial scenario
 
-1. **Groups can be worked in parallel where dependencies allow**:
-   - Group 1 tasks 1, 3, 4, 5 have no dependencies
-   - Go code (Tasks 33-36, 45-50) can be developed while infra is built
-   - Static assets (Tasks 47-49) have no Go dependencies
+**Status**: `[ ]` NOT STARTED
 
-2. **Critical path**: Tasks 1 → 3 → 6-14 → 15-22 → 24-32 → 40-44 → 54-57 → 59-62
+**Acceptance Criteria**:
+- [ ] Modify backend-envoy-config to deny frontend SPIFFE ID
+- [ ] Restart backend
+- [ ] Verify frontend-to-backend shows FAILED
+- [ ] Verify backend-to-database still shows SUCCESS (unaffected)
 
-3. **Build before deploy**: Docker images must be built and loaded into kind before applying Deployments
+---
 
-4. **Registration timing**: SPIRE entries should be created after SPIRE agent is running but can be done before or after workloads deploy (entries just need to exist when workload requests SVID)
+## Phase 5: User Story 3 - Certificate Rotation Demo (Priority: P3)
+
+### Task 64: Verify SVID TTL configuration
+
+**Status**: `[ ]` NOT STARTED
+
+**Acceptance Criteria**:
+- [ ] SPIRE Server ConfigMap has short TTL (10m for demo)
+- [ ] Document rotation observation procedure
+
+---
+
+### Task 65: Create continuous request test script
+
+**Status**: `[ ]` NOT STARTED
+
+**File**: `scripts/test-rotation.sh`
+
+**Acceptance Criteria**:
+- [ ] Polls /api/demo every 5 seconds
+- [ ] Logs timestamps and success/failure
+- [ ] Runs continuously until interrupted
+
+---
+
+### Task 66: Test certificate rotation for both patterns
+
+**Status**: `[ ]` NOT STARTED
+
+**Acceptance Criteria**:
+- [ ] Run continuous requests during rotation window
+- [ ] Verify Pattern 1 (Envoy SDS): Check Envoy /certs endpoint for rotation
+- [ ] Verify Pattern 2 (spiffe-helper): Check /spiffe-certs file timestamps
+- [ ] Verify no request failures during rotation
+
+---
+
+## Phase 6: User Story 4 - One-Command Setup (Priority: P4)
+
+### Task 67: Review demo-all.sh sequencing
+
+**Status**: `[ ]` NOT STARTED
+
+**Acceptance Criteria**:
+- [ ] Verify correct order: 01→02→03→04→05
+- [ ] Add prerequisite checks (Docker, kubectl, kind, Go)
+- [ ] Add progress indicators
+
+---
+
+### Task 68: Document prerequisites and quick deploy
+
+**Status**: `[ ]` NOT STARTED
+
+**File**: `README.md`
+
+**Acceptance Criteria**:
+- [ ] Lists prerequisites
+- [ ] Shows one-command deployment
+- [ ] Links to quickstart.md
+
+---
+
+## Phase 7: Polish & Cross-Cutting Concerns
+
+### Task 69: Update quickstart.md with troubleshooting
+
+**Status**: `[ ]` NOT STARTED
+
+**File**: `specs/001-spire-spiffe-demo/quickstart.md`
+
+---
+
+### Task 70: Add architecture diagram to README
+
+**Status**: `[ ]` NOT STARTED
+
+**Acceptance Criteria**:
+- [ ] Diagram shows both SPIFFE integration patterns
+- [ ] Labels Pattern 1 (Envoy SDS) and Pattern 2 (spiffe-helper)
+
+---
+
+### Task 71: Create ARCHITECTURE.md
+
+**Status**: `[ ]` NOT STARTED
+
+**File**: `ARCHITECTURE.md`
+
+**Acceptance Criteria**:
+- [ ] Documents Pattern 1 vs Pattern 2 design decisions
+- [ ] Explains when to use each pattern
+
+---
+
+### Task 72: Add resource limits to all Deployments
+
+**Status**: `[ ]` NOT STARTED
+
+**Acceptance Criteria**:
+- [ ] Laptop-friendly resource usage (< 8GB RAM total)
+
+---
+
+### Task 73: Add comments to all ConfigMaps
+
+**Status**: `[ ]` NOT STARTED
+
+**Acceptance Criteria**:
+- [ ] Educational comments explaining configuration choices
+
+---
+
+### Task 74: Run full quickstart validation
+
+**Status**: `[ ]` NOT STARTED
+
+**Acceptance Criteria**:
+- [ ] Clean cluster → full deployment → all scenarios working
+- [ ] Verify documentation accuracy
+
+---
+
+## Summary
+
+**Total Tasks**: 74
+**Completed**: 33 (Tasks 1-33) ✅
+**Not Started**: 41 (Tasks 34-74)
+
+**Progress**: 45% complete (33/74 tasks)
+
+**Critical Path**:
+1. ✅ Setup + SPIRE Infrastructure (T1-T23) - DONE
+2. ✅ PostgreSQL with spiffe-helper (T24-T33) - DONE (Pattern 2 corrected)
+3. 🔲 Backend with dual sidecars (T34-T45)
+4. 🔲 Frontend with Envoy (T46-T57)
+5. 🔲 Registration & E2E (T58-T61)
+6. 🔲 Demo scenarios (T62-T68)
+7. 🔲 Polish (T69-T74)
+
+**Next Actions**:
+1. ✅ ~~Execute Task 26: Delete `deploy/apps/postgres/envoy-configmap.yaml`~~ DONE
+2. ✅ ~~Execute Task 27: Delete `deploy/apps/postgres/statefulset.yaml`~~ DONE
+3. ✅ ~~Execute Tasks 28-30: Create corrected PostgreSQL manifests with spiffe-helper~~ DONE
+4. ✅ ~~Execute Task 32-33: Update kustomization and deployment script~~ DONE
+5. 🔲 Continue with Backend implementation (Group 5: Tasks 34-45)
+6. 🔲 Implement Frontend (Group 6: Tasks 46-57)
+
+---
+
+## Architecture Validation (Design Checklist)
+
+> **Note**: The ✅ marks below indicate **design decisions** (what should be built), not completion status.
+> See individual task statuses above for completion tracking.
+
+### Pattern 1: Envoy SDS (Frontend ↔ Backend) - Tasks NOT YET STARTED
+- 🔲 Frontend Envoy ConfigMap with SDS outbound cluster (T54)
+- 🔲 Backend Envoy ConfigMap with SDS inbound listener + RBAC (T40)
+- 🔲 Both mount SPIRE agent socket (T55, T42)
+
+### Pattern 2: spiffe-helper (Backend → PostgreSQL) - PostgreSQL COMPLETED ✅
+- ✅ PostgreSQL spiffe-helper ConfigMap (T28 - COMPLETED)
+- 🔲 Backend spiffe-helper ConfigMap (T41 - not started)
+- ✅ PostgreSQL StatefulSet with spiffe-helper sidecar (T30 - COMPLETED)
+- 🔲 Backend Deployment with spiffe-helper sidecar (T42 - not started)
+- ✅ PostgreSQL SSL client certificate authentication (T29-T30 - COMPLETED)
+- 🔲 Backend db.go reads client certificates from /spiffe-certs (T35 - not started)
+
+### Critical Differences from Old Architecture
+- ✅ **REMOVED**: Tasks 26-27 (PostgreSQL Envoy files deleted) - DONE
+- ✅ **ADDED**: Tasks 28-30 (PostgreSQL spiffe-helper implementation) - DONE
+- 🔲 **TO BE ADDED**: Task 41 (Backend spiffe-helper ConfigMap)
+- ✅ **CORRECTED**: Task 33 (Script verifies spiffe-helper, not Envoy) - DONE

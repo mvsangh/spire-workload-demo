@@ -33,5 +33,11 @@
 
 - All items pass validation
 - Spec is ready for `/speckit.clarify` or `/speckit.plan`
-- The detailed input from the user provided extensive context, allowing the spec to be comprehensive without requiring clarification questions
-- Technology choices mentioned in the spec (Go, Envoy, PostgreSQL, kind) are user requirements from the input, not implementation decisions made by this spec
+- Updated 2025-12-19: Architectural change to showcase TWO SPIFFE integration patterns:
+  - Pattern 1: Envoy SDS (frontend ↔ backend)
+  - Pattern 2: spiffe-helper (backend → PostgreSQL)
+- PostgreSQL integration changed from Envoy sidecar to spiffe-helper for true end-to-end mTLS where PostgreSQL directly verifies client SPIFFE IDs
+- Added FR-017, FR-018 for spiffe-helper sidecars
+- Added SC-009 for PostgreSQL direct SPIFFE ID verification
+- Updated edge cases to cover spiffe-helper failure scenarios
+- Technology choices mentioned in the spec (Go, Envoy, PostgreSQL, kind, spiffe-helper) are user requirements from the input, not implementation decisions made by this spec

@@ -1,0 +1,200 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: demo
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/component: database
+    app.kubernetes.io/part-of: spire-demo
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/component: database
+    spec:
+      serviceAccountName: postgres
+
+      # Native sidecar container (Kubernetes 1.28+): spiffe-helper
+      # restartPolicy: Always makes this a sidecar that starts BEFORE init containers
+      # and keeps running alongside main containers
+      initContainers:
+      - name: spiffe-helper
+        image: ghcr.io/spiffe/spiffe-helper:0.8.0
+        restartPolicy: Always  # Makes this a native sidecar
+        args:
+        - -config
+        - /etc/spiffe-helper/spiffe-helper.conf
+        # Run as postgres user (UID 999) so certs are owned by postgres
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+        volumeMounts:
+        - name: spiffe-certs
+          mountPath: /spiffe-certs
+        - name: spiffe-helper-config
+          mountPath: /etc/spiffe-helper
+          readOnly: true
+        - name: spire-agent-socket
+          mountPath: /run/spire/agent-sockets
+          readOnly: true
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+
+      # Regular init container: Wait for certificates to be written
+      - name: wait-for-certs
+        image: busybox:1.36
+        command:
+        - /bin/sh
+        - -c
+        - |
+          echo "Waiting for SPIFFE certificates from spiffe-helper sidecar..."
+          for i in $(seq 1 60); do
+            if [ -f /spiffe-certs/svid.pem ] && [ -f /spiffe-certs/svid_key.pem ] && [ -f /spiffe-certs/svid_bundle.pem ]; then
+              echo "Certificates found!"
+              ls -la /spiffe-certs/
+              # Fix permissions for PostgreSQL
+              chmod 600 /spiffe-certs/svid_key.pem
+              chmod 644 /spiffe-certs/svid.pem
+              chmod 644 /spiffe-certs/svid_bundle.pem
+              echo "Permissions set, ready for PostgreSQL!"
+              exit 0
+            fi
+            echo "Waiting for certificates... ($i/60)"
+            sleep 2
+          done
+          echo "ERROR: Certificates not found within timeout"
+          exit 1
+        volumeMounts:
+        - name: spiffe-certs
+          mountPath: /spiffe-certs
+
+      containers:
+      # PostgreSQL container
+      # Pattern 2: Uses certificates written by spiffe-helper for SSL/mTLS
+      - name: postgres
+        image: postgres:15
+        ports:
+        - containerPort: 5432
+          name: postgres
+          protocol: TCP
+        env:
+        - name: POSTGRES_DB
+          value: "demo"
+        - name: POSTGRES_USER
+          value: "demouser"
+        - name: POSTGRES_PASSWORD
+          value: "demopass"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        # PostgreSQL SSL configuration via environment
+        # These point to certificates written by spiffe-helper
+        - name: POSTGRES_INITDB_ARGS
+          value: "--auth-host=scram-sha-256"
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        - name: init-sql
+          mountPath: /docker-entrypoint-initdb.d
+          readOnly: true
+        # Mount SPIFFE certificates for SSL
+        - name: spiffe-certs
+          mountPath: /spiffe-certs
+          readOnly: true
+        # Mount SSL configuration
+        - name: ssl-config
+          mountPath: /etc/postgresql-ssl
+          readOnly: true
+        # Mount custom pg_hba.conf
+        - name: ssl-config
+          mountPath: /var/lib/postgresql/pg_hba.conf
+          subPath: pg_hba.conf
+          readOnly: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        # Custom command to start PostgreSQL with SSL configuration
+        command:
+        - docker-entrypoint.sh
+        args:
+        - -c
+        - ssl=on
+        - -c
+        - ssl_cert_file=/spiffe-certs/svid.pem
+        - -c
+        - ssl_key_file=/spiffe-certs/svid_key.pem
+        - -c
+        - ssl_ca_file=/spiffe-certs/svid_bundle.pem
+        - -c
+        - hba_file=/var/lib/postgresql/pg_hba.conf
+        - -c
+        - log_connections=on
+        - -c
+        - log_statement=all
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U demouser -d demo
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U demouser -d demo
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+      # Note: spiffe-helper is now a native sidecar (see initContainers with restartPolicy: Always)
+      # It starts before init containers and keeps running alongside postgres
+
+      volumes:
+      # Ephemeral storage for PostgreSQL data (demo only)
+      - name: postgres-data
+        emptyDir: {}
+      # Database initialization SQL
+      - name: init-sql
+        configMap:
+          name: postgres-init
+      # Shared volume for SPIFFE certificates
+      # spiffe-helper writes here, PostgreSQL reads from here
+      - name: spiffe-certs
+        emptyDir:
+          medium: Memory
+          sizeLimit: 10Mi
+      # spiffe-helper configuration
+      - name: spiffe-helper-config
+        configMap:
+          name: postgres-spiffe-helper-config
+      # PostgreSQL SSL configuration
+      - name: ssl-config
+        configMap:
+          name: postgres-ssl-config
+      # SPIRE agent socket (hostPath from DaemonSet)
+      - name: spire-agent-socket
+        hostPath:
+          path: /run/spire/agent-sockets
+          type: DirectoryOrCreate

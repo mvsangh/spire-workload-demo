@@ -1,0 +1,67 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+specs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kubernetes manifests
+deploy/
+*.yaml
+*.yml
+
+# Scripts (not needed in image)
+scripts/
+
+# Test files
+*_test.go
+testdata/
+
+# Build artifacts (exclude to avoid caching issues)
+bin/
+dist/
+*.exe
+*.test
+*.out
+
+# Dependencies (will be downloaded in build)
+vendor/
+
+# Logs
+*.log
+logs/
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.crt
+*.pem
+secrets/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
