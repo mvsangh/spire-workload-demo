@@ -1,0 +1,22 @@
+# Kubernetes namespaces for SPIRE/SPIFFE demo
+#
+# spire-system: SPIRE server and agent components
+# demo: Application workloads (frontend, backend, postgres)
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spire-system
+  labels:
+    app.kubernetes.io/name: spire
+    app.kubernetes.io/component: infrastructure
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo
+  labels:
+    app.kubernetes.io/name: spire-demo
+    app.kubernetes.io/component: application

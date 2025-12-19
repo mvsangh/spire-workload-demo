@@ -1,0 +1,21 @@
+# kind cluster configuration for SPIRE/SPIFFE demo
+# Creates a single-node cluster with port mapping for frontend access
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: spire-demo
+
+nodes:
+- role: control-plane
+  # Map NodePort 30080 to localhost:8080 for frontend access
+  extraPortMappings:
+  - containerPort: 30080
+    hostPort: 8080
+    protocol: TCP
+  # Labels for node identification in SPIRE registration
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "spire-agent=true"
