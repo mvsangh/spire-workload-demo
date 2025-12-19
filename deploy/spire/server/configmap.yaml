@@ -58,11 +58,6 @@ data:
         }
       }
 
-      # No-op node resolver
-      NodeResolver "noop" {
-        plugin_data {}
-      }
-
       # Notifier for bundle updates (optional but useful)
       Notifier "k8sbundle" {
         plugin_data {

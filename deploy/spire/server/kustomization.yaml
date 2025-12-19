@@ -11,6 +11,7 @@ resources:
   - clusterrole.yaml
   - clusterrolebinding.yaml
   - configmap.yaml
+  - bundle-configmap.yaml
   - statefulset.yaml
   - service.yaml
 
