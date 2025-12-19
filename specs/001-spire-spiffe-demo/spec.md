@@ -18,6 +18,230 @@ This feature creates a production-style demonstration environment showcasing SPI
 4. Provide a simple but clear UI showing communication status between components
 5. Create a foundation for future extensions (OPA, federation, non-K8s workloads)
 
+---
+
+## Architecture Diagrams
+
+### System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              KIND CLUSTER (spire-demo)                          │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐   │
+│  │                        NAMESPACE: spire-system                           │   │
+│  │                                                                          │   │
+│  │   ┌─────────────────────┐         ┌─────────────────────┐               │   │
+│  │   │    SPIRE Server     │         │    SPIRE Agent      │               │   │
+│  │   │    (StatefulSet)    │◄───────►│    (DaemonSet)      │               │   │
+│  │   │                     │  gRPC   │                     │               │   │
+│  │   │  - Issues SVIDs     │         │  - Workload API     │               │   │
+│  │   │  - Registration     │         │  - Node attestation │               │   │
+│  │   │  - Trust bundle     │         │  - SVID delivery    │               │   │
+│  │   └─────────────────────┘         └──────────┬──────────┘               │   │
+│  │                                              │                           │   │
+│  └──────────────────────────────────────────────┼───────────────────────────┘   │
+│                                                 │ hostPath: /run/spire/agent-sockets
+│  ┌──────────────────────────────────────────────┼───────────────────────────┐   │
+│  │                        NAMESPACE: demo       │                           │   │
+│  │                                              ▼                           │   │
+│  │   ┌───────────────┐    ┌───────────────┐    ┌───────────────┐           │   │
+│  │   │   Frontend    │    │    Backend    │    │   PostgreSQL  │           │   │
+│  │   │     Pod       │    │      Pod      │    │      Pod      │           │   │
+│  │   │               │    │               │    │               │           │   │
+│  │   │  [Go App]     │    │  [Go App]     │    │  [Postgres]   │           │   │
+│  │   │  [Envoy]      │───►│  [Envoy]      │    │               │           │   │
+│  │   │               │    │  [spiffe-     │───►│  [spiffe-     │           │   │
+│  │   │               │    │   helper]     │    │   helper]     │           │   │
+│  │   └───────────────┘    └───────────────┘    └───────────────┘           │   │
+│  │                                                                          │   │
+│  │        Pattern 1: Envoy SDS          Pattern 2: spiffe-helper           │   │
+│  │        (Service-to-Service)          (Application-to-Database)          │   │
+│  │                                                                          │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                    │
+                    │ NodePort 30080
+                    ▼
+              http://localhost:8080
+```
+
+### Pod Architecture (Detailed)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                 FRONTEND POD                                     │
+│  ServiceAccount: frontend                                                        │
+│  SPIFFE ID: spiffe://example.org/ns/demo/sa/frontend                            │
+│                                                                                  │
+│  ┌────────────────────────────────┐  ┌────────────────────────────────┐         │
+│  │         frontend (Go)          │  │           envoy                │         │
+│  │                                │  │                                │         │
+│  │  - Serves UI on :8080          │  │  - Outbound proxy on :8001    │         │
+│  │  - Calls backend via           │  │  - SDS for SVID certificates  │         │
+│  │    http://127.0.0.1:8001       │  │  - mTLS to backend:8080       │         │
+│  │                                │  │                                │         │
+│  └────────────────────────────────┘  └────────────────────────────────┘         │
+│                                              │                                   │
+│                                              │ mounts spire-agent-socket         │
+│                                              ▼                                   │
+│                                       /run/spire/agent-sockets                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                               │
+                                               │ Pattern 1: Envoy SDS (mTLS)
+                                               │ Frontend SVID ──► Backend SVID
+                                               ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                  BACKEND POD                                     │
+│  ServiceAccount: backend                                                         │
+│  SPIFFE ID: spiffe://example.org/ns/demo/sa/backend                             │
+│                                                                                  │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐       │
+│  │   backend (Go)   │  │      envoy       │  │     spiffe-helper        │       │
+│  │                  │  │                  │  │     (native sidecar)     │       │
+│  │  - API on :9090  │  │  - Inbound :8080 │  │                          │       │
+│  │  - Reads certs   │  │  - SDS for SVID  │  │  - Fetches backend SVID  │       │
+│  │    from          │  │  - RBAC filter:  │  │  - Writes to:            │       │
+│  │    /spiffe-certs │  │    allows only   │  │    /spiffe-certs/        │       │
+│  │  - Connects to   │  │    frontend      │  │      svid.pem            │       │
+│  │    PostgreSQL    │  │    SPIFFE ID     │  │      svid_key.pem        │       │
+│  │    with client   │  │                  │  │      svid_bundle.pem     │       │
+│  │    certs         │  │                  │  │                          │       │
+│  └────────┬─────────┘  └──────────────────┘  └────────────┬─────────────┘       │
+│           │                                               │                      │
+│           │ reads                              writes     │                      │
+│           └──────────────► /spiffe-certs ◄────────────────┘                      │
+│                            (emptyDir)                                            │
+│                                                                                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                               │
+                                               │ Pattern 2: spiffe-helper (mTLS)
+                                               │ Backend client cert ──► PostgreSQL
+                                               ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                POSTGRESQL POD                                    │
+│  ServiceAccount: postgres                                                        │
+│  SPIFFE ID: spiffe://example.org/ns/demo/sa/postgres                            │
+│                                                                                  │
+│  ┌────────────────────────────────────┐  ┌──────────────────────────────┐       │
+│  │          postgres                  │  │       spiffe-helper          │       │
+│  │                                    │  │       (native sidecar)       │       │
+│  │  - Database on :5432               │  │                              │       │
+│  │  - SSL enabled                     │  │  - Fetches postgres SVID     │       │
+│  │  - Uses SVID as server cert:       │  │  - Writes to:                │       │
+│  │    ssl_cert_file=/spiffe-certs/    │  │    /spiffe-certs/            │       │
+│  │      svid.pem                      │  │      svid.pem                │       │
+│  │    ssl_key_file=/spiffe-certs/     │  │      svid_key.pem            │       │
+│  │      svid_key.pem                  │  │      svid_bundle.pem         │       │
+│  │    ssl_ca_file=/spiffe-certs/      │  │                              │       │
+│  │      svid_bundle.pem               │  │  - Runs as postgres user     │       │
+│  │                                    │  │    (UID 999) for correct     │       │
+│  │  - pg_hba.conf: clientcert=verify-ca    file ownership              │       │
+│  │    (verifies backend SPIFFE ID)   │  │                              │       │
+│  │                                    │  │                              │       │
+│  └────────────────┬───────────────────┘  └──────────────┬───────────────┘       │
+│                   │                                      │                       │
+│                   │ reads                     writes     │                       │
+│                   └──────────► /spiffe-certs ◄───────────┘                       │
+│                                (emptyDir)                                        │
+│                                                                                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### mTLS Flow Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                              mTLS COMMUNICATION FLOW                             │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+                           PATTERN 1: Envoy SDS
+                     (Service-to-Service Communication)
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                                                                     │
+    │   Frontend App                                      Backend App     │
+    │       │                                                 ▲           │
+    │       │ HTTP :8001                                      │           │
+    │       ▼                                                 │           │
+    │   ┌───────────┐                                   ┌───────────┐     │
+    │   │  Envoy    │────────── mTLS (SVID) ──────────►│  Envoy    │     │
+    │   │ (client)  │                                   │ (server)  │     │
+    │   └─────┬─────┘                                   └─────┬─────┘     │
+    │         │                                               │           │
+    │         │ SDS API                                 SDS API           │
+    │         ▼                                               ▼           │
+    │   ┌───────────────────────────────────────────────────────────┐     │
+    │   │                      SPIRE Agent                          │     │
+    │   │  - Delivers SVIDs via SDS (Secret Discovery Service)      │     │
+    │   │  - Auto-rotates certificates                              │     │
+    │   │  - No file I/O needed                                     │     │
+    │   └───────────────────────────────────────────────────────────┘     │
+    │                                                                     │
+    │   RBAC Enforcement:                                                 │
+    │   Backend Envoy only accepts connections from:                      │
+    │     spiffe://example.org/ns/demo/sa/frontend                        │
+    │                                                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+
+
+                           PATTERN 2: spiffe-helper
+                     (Application-to-Database Communication)
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                                                                     │
+    │   Backend App                                      PostgreSQL       │
+    │       │                                                 ▲           │
+    │       │ reads client cert                               │           │
+    │       ▼                                                 │           │
+    │   /spiffe-certs/                               /spiffe-certs/       │
+    │     svid.pem ─────────── mTLS (SVID) ───────────► svid.pem         │
+    │     svid_key.pem        (PostgreSQL SSL)          svid_key.pem      │
+    │     svid_bundle.pem                               svid_bundle.pem   │
+    │       ▲                                                 ▲           │
+    │       │ writes                                    writes │           │
+    │   ┌───────────┐                                   ┌───────────┐     │
+    │   │  spiffe-  │                                   │  spiffe-  │     │
+    │   │  helper   │                                   │  helper   │     │
+    │   └─────┬─────┘                                   └─────┬─────┘     │
+    │         │                                               │           │
+    │         │ Workload API                       Workload API           │
+    │         ▼                                               ▼           │
+    │   ┌───────────────────────────────────────────────────────────┐     │
+    │   │                      SPIRE Agent                          │     │
+    │   │  - Delivers SVIDs via Workload API                        │     │
+    │   │  - spiffe-helper writes to files                          │     │
+    │   │  - Files auto-rotated by spiffe-helper                    │     │
+    │   └───────────────────────────────────────────────────────────┘     │
+    │                                                                     │
+    │   Client Certificate Verification:                                  │
+    │   PostgreSQL pg_hba.conf requires clientcert=verify-ca              │
+    │   Validates backend SPIFFE ID in certificate SAN                    │
+    │                                                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+```
+
+### SPIFFE ID Assignments
+
+| Workload | Service Account | SPIFFE ID | Pattern |
+|----------|-----------------|-----------|---------|
+| Frontend | `frontend` | `spiffe://example.org/ns/demo/sa/frontend` | Pattern 1 (Envoy SDS) |
+| Backend | `backend` | `spiffe://example.org/ns/demo/sa/backend` | Both Patterns |
+| PostgreSQL | `postgres` | `spiffe://example.org/ns/demo/sa/postgres` | Pattern 2 (spiffe-helper) |
+
+### Pattern Comparison
+
+| Aspect | Pattern 1: Envoy SDS | Pattern 2: spiffe-helper |
+|--------|---------------------|-------------------------|
+| **Use Case** | Service-to-service (HTTP/gRPC) | App-to-database (native protocols) |
+| **Certificate Delivery** | SDS API (in-memory) | File-based (/spiffe-certs/) |
+| **Application Changes** | Zero code changes | Read cert files in connection string |
+| **Protocol Support** | HTTP/1.1, HTTP/2, gRPC | Any protocol (PostgreSQL, MySQL, etc.) |
+| **RBAC/Policy** | Envoy RBAC filter | Database-level (pg_hba.conf) |
+| **Rotation** | Automatic via SDS | Automatic via file updates |
+| **Best For** | Service mesh patterns | Legacy apps, databases |
+
+---
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Happy Path Demo Flow (Priority: P1)
