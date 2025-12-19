@@ -1,0 +1,254 @@
+# Frontend API Contract
+# OpenAPI 3.0 Specification
+
+openapi: 3.0.3
+info:
+  title: SPIRE Demo Frontend API
+  description: |
+    Frontend web service for the SPIRE/SPIFFE demo. Serves the web UI and
+    proxies requests to the backend via Envoy mTLS.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local frontend (via kind port mapping)
+  - url: http://frontend.demo.svc.cluster.local:8080
+    description: Kubernetes service
+
+paths:
+  /:
+    get:
+      summary: Serve demo UI
+      description: Returns the main HTML page for the demo interface
+      operationId: getUI
+      tags:
+        - UI
+      responses:
+        '200':
+          description: HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+              example: "<!DOCTYPE html>..."
+
+  /static/{path}:
+    get:
+      summary: Serve static assets
+      description: Serves CSS, JavaScript, and image files
+      operationId: getStatic
+      tags:
+        - UI
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Path to static file
+      responses:
+        '200':
+          description: Static file content
+        '404':
+          description: File not found
+
+  /api/demo:
+    get:
+      summary: Run demo
+      description: |
+        Triggers a demo run:
+        1. Frontend calls backend via Envoy mTLS
+        2. Backend queries PostgreSQL via Envoy mTLS
+        3. Results returned to UI
+
+        This is the main demo action triggered by "Run Demo" button.
+      operationId: runDemo
+      tags:
+        - Demo
+      responses:
+        '200':
+          description: Demo completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoResult'
+              example:
+                frontend_to_backend:
+                  success: true
+                  message: "mTLS connection to backend established"
+                  latency: "8ms"
+                backend_to_database:
+                  success: true
+                  message: "Database query successful via mTLS"
+                  latency: "15ms"
+                orders:
+                  - id: 1
+                    description: "Widget Assembly Kit"
+                    status: "completed"
+                    created_at: "2025-12-17T10:00:00Z"
+        '502':
+          description: Backend unreachable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoResult'
+              example:
+                frontend_to_backend:
+                  success: false
+                  message: "Connection refused - RBAC denied or backend down"
+                backend_to_database:
+                  success: false
+                  message: "Not tested - backend unreachable"
+                error: "Backend connection failed"
+
+  /api/health:
+    get:
+      summary: Frontend health check
+      description: Returns frontend health status
+      operationId: getHealth
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Frontend is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                version: "1.0.0"
+                timestamp: "2025-12-19T10:00:00Z"
+
+  /api/status:
+    get:
+      summary: System status
+      description: |
+        Returns comprehensive system status including all components.
+        Used for monitoring and debugging.
+      operationId: getStatus
+      tags:
+        - Status
+      responses:
+        '200':
+          description: System status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatus'
+              example:
+                frontend:
+                  status: "healthy"
+                  version: "1.0.0"
+                backend:
+                  status: "healthy"
+                  reachable: true
+                database:
+                  status: "healthy"
+                  reachable: true
+                spire:
+                  status: "active"
+                  svid_expiry: "2025-12-19T11:00:00Z"
+
+components:
+  schemas:
+    DemoResult:
+      type: object
+      required:
+        - frontend_to_backend
+        - backend_to_database
+      properties:
+        frontend_to_backend:
+          $ref: '#/components/schemas/ConnectionStatus'
+        backend_to_database:
+          $ref: '#/components/schemas/ConnectionStatus'
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        error:
+          type: string
+          description: Error message if demo failed
+
+    ConnectionStatus:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        latency:
+          type: string
+          example: "5ms"
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        description:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        created_at:
+          type: string
+          format: date-time
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    SystemStatus:
+      type: object
+      properties:
+        frontend:
+          type: object
+          properties:
+            status:
+              type: string
+            version:
+              type: string
+        backend:
+          type: object
+          properties:
+            status:
+              type: string
+            reachable:
+              type: boolean
+        database:
+          type: object
+          properties:
+            status:
+              type: string
+            reachable:
+              type: boolean
+        spire:
+          type: object
+          properties:
+            status:
+              type: string
+            svid_expiry:
+              type: string
+              format: date-time
+
+tags:
+  - name: UI
+    description: Web UI endpoints
+  - name: Demo
+    description: Demo action endpoints
+  - name: Health
+    description: Health check endpoints
+  - name: Status
+    description: System status endpoints

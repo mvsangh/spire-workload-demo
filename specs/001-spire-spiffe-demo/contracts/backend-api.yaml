@@ -1,0 +1,267 @@
+# Backend API Contract
+# OpenAPI 3.0 Specification
+
+openapi: 3.0.3
+info:
+  title: SPIRE Demo Backend API
+  description: |
+    Backend API for the SPIRE/SPIFFE demo. Exposes order data and health checks.
+
+    **Authentication**: mTLS via Envoy sidecar. Only requests from the frontend
+    SPIFFE ID are allowed through RBAC.
+  version: 1.0.0
+  contact:
+    name: Demo Support
+
+servers:
+  - url: http://127.0.0.1:9090
+    description: Local backend (via Envoy sidecar)
+  - url: https://backend.demo.svc.cluster.local:8080
+    description: Kubernetes service (mTLS)
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns backend health status including database connectivity
+      operationId: getHealth
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Backend is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                database: "connected"
+                timestamp: "2025-12-19T10:00:00Z"
+        '503':
+          description: Backend is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "unhealthy"
+                database: "disconnected"
+                error: "connection refused"
+                timestamp: "2025-12-19T10:00:00Z"
+
+  /api/orders:
+    get:
+      summary: List all orders
+      description: Returns all orders from the database. Used to demonstrate backend-to-database mTLS connection.
+      operationId: listOrders
+      tags:
+        - Orders
+      responses:
+        '200':
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Order'
+                  count:
+                    type: integer
+                    description: Total number of orders
+              example:
+                orders:
+                  - id: 1
+                    description: "Widget Assembly Kit"
+                    status: "completed"
+                    created_at: "2025-12-17T10:00:00Z"
+                  - id: 2
+                    description: "Premium Gadget Pro"
+                    status: "processing"
+                    created_at: "2025-12-18T10:00:00Z"
+                count: 2
+        '500':
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "database connection failed"
+                details: "connection refused to postgres:5432"
+
+  /api/demo:
+    get:
+      summary: Run demo check
+      description: |
+        Performs a complete demo check:
+        1. Verifies frontend-to-backend connection (implicit - request arrived)
+        2. Verifies backend-to-database connection by fetching orders
+
+        Returns comprehensive status for UI display.
+      operationId: runDemo
+      tags:
+        - Demo
+      responses:
+        '200':
+          description: Demo check completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoResult'
+              example:
+                frontend_to_backend:
+                  success: true
+                  message: "mTLS connection established"
+                  latency: "5ms"
+                backend_to_database:
+                  success: true
+                  message: "PostgreSQL connection via mTLS"
+                  latency: "12ms"
+                orders:
+                  - id: 1
+                    description: "Widget Assembly Kit"
+                    status: "completed"
+                    created_at: "2025-12-17T10:00:00Z"
+        '503':
+          description: Demo check failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoResult'
+              example:
+                frontend_to_backend:
+                  success: true
+                  message: "mTLS connection established"
+                backend_to_database:
+                  success: false
+                  message: "Connection failed"
+                error: "database unavailable"
+
+components:
+  schemas:
+    Order:
+      type: object
+      required:
+        - id
+        - description
+        - status
+        - created_at
+      properties:
+        id:
+          type: integer
+          description: Unique order identifier
+          example: 1
+        description:
+          type: string
+          description: Order description
+          maxLength: 255
+          example: "Widget Assembly Kit"
+        status:
+          type: string
+          description: Current order status
+          enum:
+            - pending
+            - processing
+            - completed
+            - failed
+          example: "completed"
+        created_at:
+          type: string
+          format: date-time
+          description: Order creation timestamp
+          example: "2025-12-17T10:00:00Z"
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - unhealthy
+          description: Overall health status
+        database:
+          type: string
+          enum:
+            - connected
+            - disconnected
+          description: Database connection status
+        error:
+          type: string
+          description: Error details if unhealthy
+        timestamp:
+          type: string
+          format: date-time
+          description: Health check timestamp
+
+    DemoResult:
+      type: object
+      required:
+        - frontend_to_backend
+        - backend_to_database
+      properties:
+        frontend_to_backend:
+          $ref: '#/components/schemas/ConnectionStatus'
+        backend_to_database:
+          $ref: '#/components/schemas/ConnectionStatus'
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+          description: Orders fetched if database connection succeeded
+        error:
+          type: string
+          description: Overall error message if any check failed
+
+    ConnectionStatus:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+          description: Whether the connection succeeded
+        message:
+          type: string
+          description: Human-readable status message
+        latency:
+          type: string
+          description: Connection latency (e.g., "5ms")
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+        details:
+          type: string
+          description: Additional error details
+
+  securitySchemes:
+    mtls:
+      type: mutualTLS
+      description: |
+        mTLS authentication via Envoy sidecar. The frontend's SPIFFE ID
+        (spiffe://example.org/ns/demo/sa/frontend) must be presented.
+
+security:
+  - mtls: []
+
+tags:
+  - name: Health
+    description: Health check endpoints
+  - name: Orders
+    description: Order management endpoints
+  - name: Demo
+    description: Demo-specific endpoints

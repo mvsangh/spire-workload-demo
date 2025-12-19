@@ -1,0 +1,118 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# Go build output
+/bin/
+/dist/
+
+# Go vendor (uncomment if not vendoring)
+# /vendor/
+
+# Go coverage
+*.coverprofile
+coverage.html
+coverage.out
+
+# Binaries for programs and plugins
+cmd/frontend/frontend
+cmd/backend/backend
+
+# IDE / Editors
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Kubernetes
+*.kubeconfig
+kubeconfig
+.kube/
+
+# kind
+kind-config-*.yaml.bak
+
+# Docker
+docker-compose.override.yml
+
+# Secrets and credentials (never commit these)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+.env
+.env.*
+!.env.example
+
+# SPIRE data (local testing)
+/data/
+*.sqlite3
+*.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Test artifacts
+test-results/
+.pytest_cache/
+
+# Build artifacts
+build/
+
+# Node (if any frontend tooling)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# Windows
+Desktop.ini
+$RECYCLE.BIN/
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# Generated documentation (keep specs)
+docs/_build/
+
+# Local development overrides
+local/
+*.local.yaml
+*.local.yml
