@@ -1439,7 +1439,7 @@ containers:
 - ✅ Pattern 1 (Envoy SDS) configured and ready for frontend connections
 - ✅ All FR-019 (structured logging) and FR-020 (connection pooling) requirements met
 - 📝 Detailed execution logs added for all backend tasks
-- 📝 Comprehensive deployment log created: `backend-deployment-log.md`
+- 📝 Comprehensive deployment log created: `operations/backend-deployment-log.md`
 
 **Critical Path**:
 1. ✅ Setup + SPIRE Infrastructure (T1-T23) - COMPLETED
