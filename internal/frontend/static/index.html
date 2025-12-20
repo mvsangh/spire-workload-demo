@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPIRE/SPIFFE Demo</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SPIRE/SPIFFE Production Demo</h1>
+            <p class="subtitle">Demonstrating Two SPIFFE Integration Patterns</p>
+        </header>
+
+        <main>
+            <section class="demo-section">
+                <button id="runDemoBtn" class="run-demo-btn">Run Demo</button>
+                <div id="loading" class="loading hidden">Running demo...</div>
+            </section>
+
+            <section class="results-section">
+                <h2>Connection Status</h2>
+
+                <!-- Pattern 1: Envoy SDS (Frontend to Backend) -->
+                <div class="connection-card" id="frontendToBackend">
+                    <div class="card-header">
+                        <h3>Pattern 1: Envoy SDS</h3>
+                        <span class="pattern-badge">envoy-sds</span>
+                    </div>
+                    <div class="connection-path">
+                        Frontend → Envoy → Backend
+                    </div>
+                    <div class="status-indicator" id="fe2beStatus">
+                        <span class="status-icon">⏳</span>
+                        <span class="status-text">Not started</span>
+                    </div>
+                    <div class="status-message" id="fe2beMessage"></div>
+                </div>
+
+                <!-- Pattern 2: spiffe-helper (Backend to Database) -->
+                <div class="connection-card" id="backendToDatabase">
+                    <div class="card-header">
+                        <h3>Pattern 2: spiffe-helper</h3>
+                        <span class="pattern-badge">spiffe-helper</span>
+                    </div>
+                    <div class="connection-path">
+                        Backend → spiffe-helper → PostgreSQL
+                    </div>
+                    <div class="status-indicator" id="be2dbStatus">
+                        <span class="status-icon">⏳</span>
+                        <span class="status-text">Not started</span>
+                    </div>
+                    <div class="status-message" id="be2dbMessage"></div>
+                </div>
+            </section>
+
+            <section class="orders-section hidden" id="ordersSection">
+                <h2>Orders Retrieved from Database</h2>
+                <div class="orders-container" id="ordersContainer">
+                    <!-- Orders will be inserted here by JavaScript -->
+                </div>
+            </section>
+
+            <section class="info-section">
+                <h2>About This Demo</h2>
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>Pattern 1: Envoy SDS</h4>
+                        <p>Service-to-service mTLS using Envoy sidecars with Secret Discovery Service (SDS). Certificates are delivered in-memory with zero application code changes.</p>
+                        <ul>
+                            <li>Frontend Envoy fetches SVID via SDS</li>
+                            <li>Backend Envoy validates frontend SPIFFE ID</li>
+                            <li>RBAC enforced at Envoy layer</li>
+                        </ul>
+                    </div>
+                    <div class="info-card">
+                        <h4>Pattern 2: spiffe-helper</h4>
+                        <p>Application-to-database mTLS using spiffe-helper sidecar to write SVID certificates to files. PostgreSQL directly verifies client certificates.</p>
+                        <ul>
+                            <li>spiffe-helper writes certs to /spiffe-certs</li>
+                            <li>Backend reads certs for PostgreSQL connection</li>
+                            <li>PostgreSQL verifies client SPIFFE ID</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>SPIRE/SPIFFE Demo • Two Integration Patterns • Kubernetes + kind</p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

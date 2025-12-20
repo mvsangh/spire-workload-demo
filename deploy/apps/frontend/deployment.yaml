@@ -1,0 +1,135 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: demo
+  labels:
+    app: frontend
+    pattern: envoy-sds # Pattern 1 only
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        pattern: envoy-sds
+    spec:
+      serviceAccountName: frontend
+
+      containers:
+      # Frontend application (Pattern 1: calls backend via local Envoy)
+      - name: frontend
+        image: frontend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        env:
+        # Logging configuration (FR-019)
+        - name: LOG_FORMAT
+          value: "json"
+        - name: LOG_LEVEL
+          value: "info"
+        # Backend connection via Envoy (Pattern 1)
+        - name: BACKEND_URL
+          value: "http://127.0.0.1:8001" # Local Envoy proxy
+        - name: SPIFFE_ID
+          value: "spiffe://example.org/ns/demo/sa/frontend"
+        # Static files path
+        - name: STATIC_PATH
+          value: "/app/static"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+
+      # Envoy sidecar (Pattern 1: outbound mTLS to backend via SDS)
+      - name: envoy
+        image: envoyproxy/envoy:v1.29-latest
+        imagePullPolicy: IfNotPresent
+        args:
+        - "-c"
+        - "/etc/envoy/envoy.yaml"
+        - "--log-level"
+        - "info"
+        ports:
+        - name: envoy-proxy
+          containerPort: 8001
+          protocol: TCP
+        - name: envoy-admin
+          containerPort: 9901
+          protocol: TCP
+        volumeMounts:
+        - name: envoy-config
+          mountPath: /etc/envoy
+          readOnly: true
+        - name: spire-agent-socket
+          mountPath: /run/spire/agent-sockets
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: 9901
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 9901
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        securityContext:
+          runAsUser: 101
+          runAsGroup: 101
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+
+      volumes:
+      # Envoy configuration (Pattern 1)
+      - name: envoy-config
+        configMap:
+          name: frontend-envoy-config
+      # SPIRE agent socket (hostPath from DaemonSet)
+      - name: spire-agent-socket
+        hostPath:
+          path: /run/spire/agent-sockets
+          type: Directory
