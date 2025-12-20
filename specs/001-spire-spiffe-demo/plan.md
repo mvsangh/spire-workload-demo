@@ -1,7 +1,8 @@
 # Implementation Plan: SPIRE/SPIFFE Production-Style Demo
 
-**Branch**: `001-spire-spiffe-demo` | **Date**: 2025-12-19 | **Spec**: [spec.md](./spec.md)
+**Branch**: `001-spire-spiffe-demo` | **Date**: 2025-12-20 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/001-spire-spiffe-demo/spec.md`
+**Last Updated**: 2025-12-20 (Incorporated clarifications from Session 2025-12-20)
 
 ## Summary
 
@@ -24,6 +25,16 @@ Production-style SPIRE/SPIFFE demo on kind Kubernetes cluster demonstrating work
 **Performance Goals**: UI response < 2 seconds (demo context)
 **Constraints**: < 8GB RAM, 4 CPU cores (developer laptop)
 **Scale/Scope**: Single cluster, 3 workloads (frontend, backend, postgres), 2 Envoy sidecars (frontend + backend), 2 spiffe-helper sidecars (backend + postgres)
+
+### Recent Clarifications (2025-12-20)
+
+Three key decisions from clarification session:
+
+1. **Observability Strategy**: Structured logging with pattern identifiers (Pattern 1: Envoy SDS, Pattern 2: spiffe-helper) showing SPIFFE IDs, connection status, and rotation events (FR-019, SC-010)
+
+2. **Failure Handling**: Graceful degradation using cached SVIDs during SPIRE unavailability or concurrent operations. System continues with existing certificates (1-hour default TTL) while new bootstrapping fails.
+
+3. **Database Connection Management**: PostgreSQL connection pool with 10 max connections, 5 idle connections, 2-minute connection lifetime (FR-020) - balances production patterns with demo constraints.
 
 ## Constitution Check
 
@@ -197,7 +208,11 @@ docker/
    - Init script for demo data (orders table)
 
 3. **Backend Service (Both Patterns)**
-   - Go backend implementation
+   - Go backend implementation with structured logging (log/slog)
+   - PostgreSQL connection pool configuration (FR-020):
+     - MaxOpenConns: 10
+     - MaxIdleConns: 5
+     - ConnMaxLifetime: 2 minutes
    - Envoy sidecar ConfigMap (Pattern 1: inbound mTLS from frontend via SDS)
    - spiffe-helper ConfigMap (Pattern 2: outbound client certificates for PostgreSQL)
    - Backend Dockerfile
@@ -259,6 +274,58 @@ docker/
 
 ---
 
+## Observability & Logging Strategy
+
+### Structured Logging Requirements (FR-019)
+
+All Go services must emit structured logs with the following fields:
+
+**Log Format** (JSON):
+```json
+{
+  "timestamp": "2025-12-20T10:15:30Z",
+  "level": "info",
+  "pattern": "envoy-sds" | "spiffe-helper",
+  "component": "frontend" | "backend" | "postgres",
+  "event": "connection_attempt" | "connection_success" | "connection_failure" | "cert_rotation",
+  "spiffe_id": "spiffe://example.org/ns/demo/sa/backend",
+  "peer_spiffe_id": "spiffe://example.org/ns/demo/sa/frontend",
+  "message": "Human-readable description"
+}
+```
+
+**Pattern 1 (Envoy SDS) - Key Log Events**:
+- Frontend Envoy: Outbound connection to backend with client SVID
+- Backend Envoy: Inbound connection validation with RBAC check
+- SVID rotation via SDS (visible in Envoy admin logs)
+
+**Pattern 2 (spiffe-helper) - Key Log Events**:
+- Backend app: Reading client certificates from `/spiffe-certs`
+- PostgreSQL: Client certificate authentication success/failure
+- spiffe-helper: Certificate file writes and rotation events
+
+### Verification Points for Demo Presenters (SC-010)
+
+1. **Pattern 1 Verification**:
+   ```bash
+   kubectl logs -n demo deployment/backend -c envoy | grep "rbac"
+   # Should show SPIFFE ID validation and RBAC decisions
+   ```
+
+2. **Pattern 2 Verification**:
+   ```bash
+   kubectl logs -n demo statefulset/postgres -c postgres | grep "certificate"
+   # Should show SSL client certificate verification
+   ```
+
+3. **Certificate Rotation Verification**:
+   ```bash
+   kubectl logs -n demo deployment/backend -c spiffe-helper | grep "rotation"
+   # Should show file updates with new SVIDs
+   ```
+
+---
+
 ## Phase 0: Research (will be generated)
 
 Topics requiring research documentation in `research.md`:
@@ -287,6 +354,11 @@ Topics requiring research documentation in `research.md`:
    - When to use go-spiffe library vs. proxies
    - Database connection with client certificates
    - Zero-code-change demonstration approach
+
+6. **Go Structured Logging** (NEW)
+   - Using `log/slog` package (Go 1.21+) for structured JSON logging
+   - Pattern-aware logging middleware
+   - Correlation IDs for request tracing across patterns
 
 ---
 

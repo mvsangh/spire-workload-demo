@@ -312,7 +312,9 @@ A developer or presenter can deploy the entire demo environment with minimal man
 
 ### Edge Cases
 
-- What happens when SPIRE server is temporarily unavailable? The system should use cached SVIDs until they expire.
+- What happens when SPIRE server is temporarily unavailable? The system gracefully degrades by continuing to use cached SVIDs until they expire (default 1 hour TTL), allowing existing mTLS connections to continue functioning. New workload bootstrapping will fail during this period.
+- What happens during concurrent SVID rotation across multiple workloads? Each workload independently rotates certificates via their respective patterns (Envoy SDS for Pattern 1, spiffe-helper file updates for Pattern 2) without coordination requirements. Existing connections remain stable using current certificates while new connections use rotated certificates.
+- What happens when SPIRE server restarts during an active demo? Workloads continue operating with cached SVIDs. SPIRE agents automatically reconnect to the server, and certificate rotation resumes once the server is available.
 - What happens when a workload's service account doesn't match any registration entry? The workload should fail to obtain an SVID and connections should fail.
 - What happens when Postgres is unavailable? The backend should return an appropriate error that the frontend displays.
 - What happens when Envoy sidecar fails to start? The pod should not become Ready (liveness/readiness probes should detect this).
@@ -341,6 +343,8 @@ A developer or presenter can deploy the entire demo environment with minimal man
 - **FR-016**: Frontend-to-backend communication MUST use HTTP/JSON protocol
 - **FR-017**: PostgreSQL pod MUST include spiffe-helper sidecar that fetches SVIDs from SPIRE agent and writes certificate files to shared volume
 - **FR-018**: Backend pod MUST include spiffe-helper sidecar that fetches SVIDs and writes certificate files for PostgreSQL client authentication
+- **FR-019**: All services MUST emit structured log messages with pattern identifiers (Pattern 1: Envoy SDS, Pattern 2: spiffe-helper) showing SPIFFE IDs, connection success/failure, and certificate rotation events for demo observation
+- **FR-020**: Backend service MUST implement PostgreSQL connection pooling with maximum 10 connections, 5 idle connections, and 2-minute connection lifetime to demonstrate production patterns within laptop resource constraints
 
 ### Key Entities
 
@@ -365,6 +369,7 @@ A developer or presenter can deploy the entire demo environment with minimal man
 - **SC-007**: Demo runs successfully on machines with 8GB RAM and 4 CPU cores (typical developer laptop)
 - **SC-008**: Backend correctly returns order data from PostgreSQL when all connections succeed
 - **SC-009**: PostgreSQL directly verifies backend SPIFFE ID from SVID certificates (not through Envoy proxy)
+- **SC-010**: Demo presenters can verify mTLS handshakes and SPIFFE ID validation by inspecting structured logs that clearly distinguish between Pattern 1 (Envoy SDS) and Pattern 2 (spiffe-helper) operations
 
 ## Clarifications
 
@@ -375,6 +380,12 @@ A developer or presenter can deploy the entire demo environment with minimal man
 ### Session 2025-12-19
 
 - Q: How should PostgreSQL integrate with SPIFFE? → A: Use spiffe-helper sidecar to write SVID certificates directly for PostgreSQL to verify (not Envoy proxy)
+
+### Session 2025-12-20
+
+- Q: How should the demo provide observability for mTLS handshakes and certificate rotation verification during live presentations? → A: Structured logging with pattern labels
+- Q: What happens when multiple concurrent operations occur (e.g., SPIRE server restart during active demo, simultaneous SVID rotation)? → A: Graceful degradation with cached SVIDs
+- Q: What database connection management strategy should the backend use for PostgreSQL connections? → A: Simple connection pool with demo-appropriate limits
 
 ## Assumptions
 
@@ -387,6 +398,8 @@ A developer or presenter can deploy the entire demo environment with minimal man
 - SQLite is acceptable for SPIRE server datastore in demo environment (not production-grade)
 - Single kind cluster is sufficient for v1 (federation is a future enhancement)
 - No external PKI/CA integration required for v1 (self-signed SPIRE root)
+- PostgreSQL connection pool settings (max 10 connections, 5 idle) are sufficient for demo load (single-user, sequential requests)
+- Demo does not require high-concurrency testing (connection pool sized for demonstration, not load testing)
 
 ## Out of Scope (v1)
 

@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-spiffe-helper-config
+  namespace: demo
+  labels:
+    app: backend
+    pattern: spiffe-helper
+data:
+  spiffe-helper.conf: |
+    # SPIFFE Helper configuration for Backend (Pattern 2)
+    # Fetches backend SVID and writes to files for PostgreSQL client authentication
+    
+    agent_address = "/run/spire/agent-sockets/spire-agent.sock"
+    cmd = ""
+    cmd_args = ""
+    cert_dir = "/spiffe-certs"
+    renew_signal = ""
+    svid_file_name = "svid.pem"
+    svid_key_file_name = "svid_key.pem"
+    svid_bundle_file_name = "svid_bundle.pem"
+    
+    # File permissions (CRITICAL for PostgreSQL SSL)
+    cert_file_mode = 0644
+    key_file_mode = 0600  # PostgreSQL requires private key to be 0600
+    
+    # Enable log output for certificate rotation events (FR-019)
+    log_level = "info"
