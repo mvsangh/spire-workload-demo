@@ -163,37 +163,167 @@ verify_postgres_ssl() {
     echo ""
 }
 
+# Build and deploy Backend
+deploy_backend() {
+    echo "→ Building backend Docker image..."
+
+    cd "$PROJECT_ROOT"
+    if docker build -t backend:latest -f docker/backend.Dockerfile . ; then
+        echo "✓ Backend image built successfully"
+    else
+        echo "✗ Failed to build backend image"
+        exit 1
+    fi
+
+    echo "→ Loading backend image into kind cluster..."
+    if kind load docker-image backend:latest --name spire-demo; then
+        echo "✓ Backend image loaded into kind"
+    else
+        echo "✗ Failed to load backend image"
+        exit 1
+    fi
+
+    echo "→ Deploying backend with dual sidecars (Envoy + spiffe-helper)..."
+    kubectl apply -k "$PROJECT_ROOT/deploy/apps/backend/"
+
+    echo "→ Waiting for backend pod to be ready (timeout: 180s)..."
+    if kubectl wait --for=condition=ready pod -l app=backend -n demo --timeout=180s; then
+        echo "✓ Backend pod is ready"
+    else
+        echo "✗ Backend pod failed to become ready"
+        kubectl get pods -n demo -l app=backend
+        kubectl describe pod -l app=backend -n demo | tail -30
+        exit 1
+    fi
+
+    echo ""
+}
+
+# Verify Backend
+verify_backend() {
+    echo "→ Verifying backend deployment..."
+
+    # Check backend health
+    BACKEND_POD=$(kubectl get pod -n demo -l app=backend -o jsonpath='{.items[0].metadata.name}')
+
+    if kubectl exec -n demo "$BACKEND_POD" -c backend -- wget -q -O- http://localhost:9090/health &>/dev/null; then
+        echo "✓ Backend health check passed"
+    else
+        echo "✗ Backend health check failed"
+        exit 1
+    fi
+
+    # Verify containers
+    CONTAINER_COUNT=$(kubectl get pod -n demo -l app=backend -o jsonpath='{.items[0].status.containerStatuses}' | grep -o '"ready":true' | wc -l)
+    if [ "$CONTAINER_COUNT" -eq 3 ]; then
+        echo "✓ All 3 containers running (backend + envoy + spiffe-helper)"
+    else
+        echo "⚠ Expected 3 containers, found $CONTAINER_COUNT running"
+    fi
+
+    echo ""
+}
+
+# Build and deploy Frontend
+deploy_frontend() {
+    echo "→ Building frontend Docker image..."
+
+    cd "$PROJECT_ROOT"
+    if docker build -t frontend:latest -f docker/frontend.Dockerfile . ; then
+        echo "✓ Frontend image built successfully"
+    else
+        echo "✗ Failed to build frontend image"
+        exit 1
+    fi
+
+    echo "→ Loading frontend image into kind cluster..."
+    if kind load docker-image frontend:latest --name spire-demo; then
+        echo "✓ Frontend image loaded into kind"
+    else
+        echo "✗ Failed to load frontend image"
+        exit 1
+    fi
+
+    echo "→ Deploying frontend with Envoy sidecar (Pattern 1)..."
+    kubectl apply -k "$PROJECT_ROOT/deploy/apps/frontend/"
+
+    echo "→ Waiting for frontend pod to be ready (timeout: 180s)..."
+    if kubectl wait --for=condition=ready pod -l app=frontend -n demo --timeout=180s; then
+        echo "✓ Frontend pod is ready"
+    else
+        echo "✗ Frontend pod failed to become ready"
+        kubectl get pods -n demo -l app=frontend
+        kubectl describe pod -l app=frontend -n demo | tail -30
+        exit 1
+    fi
+
+    echo ""
+}
+
+# Verify Frontend
+verify_frontend() {
+    echo "→ Verifying frontend deployment..."
+
+    # Check frontend health
+    if curl -s -f http://localhost:8080/health &>/dev/null; then
+        echo "✓ Frontend health check passed (http://localhost:8080/health)"
+    else
+        echo "✗ Frontend health check failed"
+        exit 1
+    fi
+
+    # Verify containers
+    CONTAINER_COUNT=$(kubectl get pod -n demo -l app=frontend -o jsonpath='{.items[0].status.containerStatuses}' | grep -o '"ready":true' | wc -l)
+    if [ "$CONTAINER_COUNT" -eq 2 ]; then
+        echo "✓ All 2 containers running (frontend + envoy)"
+    else
+        echo "⚠ Expected 2 containers, found $CONTAINER_COUNT running"
+    fi
+
+    echo ""
+}
+
 # Main execution
 main() {
     check_prerequisites
+
+    echo "========================================"
+    echo "Step 1: Deploy PostgreSQL"
+    echo "========================================"
     deploy_postgres
     verify_postgres
     verify_postgres_spiffe_helper
     verify_postgres_ssl
 
     echo "========================================"
-    echo "✓ PostgreSQL Deployment Complete"
+    echo "Step 2: Deploy Backend"
+    echo "========================================"
+    deploy_backend
+    verify_backend
+
+    echo "========================================"
+    echo "Step 3: Deploy Frontend"
+    echo "========================================"
+    deploy_frontend
+    verify_frontend
+
+    echo "========================================"
+    echo "✓ All Applications Deployed Successfully"
     echo "========================================"
     echo ""
-    echo "PostgreSQL is running with spiffe-helper sidecar (Pattern 2)"
-    echo "  - SPIFFE certificates are written to /spiffe-certs"
-    echo "  - PostgreSQL SSL is configured to use SVID certificates"
-    echo "  - Client certificate authentication is enabled"
+    echo "Deployed components:"
+    echo "  ✓ PostgreSQL (Pattern 2: spiffe-helper)"
+    echo "  ✓ Backend (Pattern 1 + Pattern 2: Envoy + spiffe-helper)"
+    echo "  ✓ Frontend (Pattern 1: Envoy SDS)"
     echo ""
-    echo "Connection string (internal): postgres.demo.svc.cluster.local:5432"
-    echo ""
-    echo "To verify SSL certificates:"
-    echo "  kubectl exec -n demo postgres-0 -c spiffe-helper -- ls -la /spiffe-certs/"
-    echo ""
-    echo "To check PostgreSQL logs:"
-    echo "  kubectl logs -n demo postgres-0 -c postgres"
-    echo ""
-    echo "To check spiffe-helper logs:"
-    echo "  kubectl logs -n demo postgres-0 -c spiffe-helper"
+    echo "Access the demo:"
+    echo "  → Open http://localhost:8080 in your browser"
+    echo "  → Click 'Run Demo' to test both SPIFFE patterns"
     echo ""
     echo "Next steps:"
-    echo "  - Register SPIRE entries: ./scripts/05-register-entries.sh"
-    echo "  - Deploy backend (to be added)"
+    echo "  → Register SPIRE entries: ./scripts/05-register-entries.sh"
+    echo "  → Or run full demo: ./scripts/demo-all.sh"
+    echo ""
 }
 
 main "$@"
