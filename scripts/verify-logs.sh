@@ -216,11 +216,11 @@ print_summary() {
     echo ""
 
     # Count log entries by checking individual containers
-    P1_FRONTEND=$(kubectl logs -n demo -l app=frontend -c frontend --tail=100 2>/dev/null | grep -c '"pattern":"envoy-sds"' || echo "0")
-    P1_BACKEND=$(kubectl logs -n demo -l app=backend -c backend --tail=100 2>/dev/null | grep -c '"pattern":"envoy-sds"' || echo "0")
+    P1_FRONTEND=$(kubectl logs -n demo -l app=frontend -c frontend --tail=100 2>/dev/null | grep '"pattern":"envoy-sds"' | wc -l || echo "0")
+    P1_BACKEND=$(kubectl logs -n demo -l app=backend -c backend --tail=100 2>/dev/null | grep '"pattern":"envoy-sds"' | wc -l || echo "0")
     P1_COUNT=$((P1_FRONTEND + P1_BACKEND))
 
-    P2_COUNT=$(kubectl logs -n demo -l app=backend -c backend --tail=100 2>/dev/null | grep -c '"pattern":"spiffe-helper"' || echo "0")
+    P2_COUNT=$(kubectl logs -n demo -l app=backend -c backend --tail=100 2>/dev/null | grep '"pattern":"spiffe-helper"' | wc -l || echo "0")
 
     echo "Log entries found (last 200 lines):"
     echo "  • Pattern 1 (envoy-sds):     $P1_COUNT events"
