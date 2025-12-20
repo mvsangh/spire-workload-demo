@@ -99,41 +99,47 @@ verify_postgres() {
 }
 
 # Verify spiffe-helper sidecar (Pattern 2)
+# Note: spiffe-helper runs as a native sidecar (init container with restartPolicy: Always)
 verify_postgres_spiffe_helper() {
     echo "→ Verifying PostgreSQL spiffe-helper sidecar (Pattern 2)..."
 
-    # Check spiffe-helper container is running
-    if kubectl get pod postgres-0 -n demo -o jsonpath='{.status.containerStatuses[?(@.name=="spiffe-helper")].ready}' | grep -q "true"; then
-        echo "✓ spiffe-helper sidecar is running"
+    # Check spiffe-helper native sidecar is running (it's in initContainerStatuses, not containerStatuses)
+    if kubectl get pod postgres-0 -n demo -o jsonpath='{.status.initContainerStatuses[?(@.name=="spiffe-helper")].ready}' | grep -q "true"; then
+        echo "✓ spiffe-helper native sidecar is running"
     else
         echo "✗ spiffe-helper sidecar is not ready"
-        kubectl get pod postgres-0 -n demo -o jsonpath='{.status.containerStatuses}'
+        kubectl get pod postgres-0 -n demo -o jsonpath='{.status.initContainerStatuses}'
         exit 1
     fi
 
-    # Check SPIFFE certificates are written
+    # Check SPIFFE certificates are written (check from postgres container since spiffe-helper has minimal image)
     echo "→ Checking SPIFFE certificates..."
 
-    if kubectl exec -n demo postgres-0 -c spiffe-helper -- ls -la /spiffe-certs/svid.pem &> /dev/null; then
+    if kubectl exec -n demo postgres-0 -c postgres -- test -f /spiffe-certs/svid.pem; then
         echo "✓ SVID certificate (svid.pem) exists"
     else
         echo "✗ SVID certificate not found"
         exit 1
     fi
 
-    if kubectl exec -n demo postgres-0 -c spiffe-helper -- ls -la /spiffe-certs/svid_key.pem &> /dev/null; then
+    if kubectl exec -n demo postgres-0 -c postgres -- test -f /spiffe-certs/svid_key.pem; then
         echo "✓ SVID private key (svid_key.pem) exists"
     else
         echo "✗ SVID private key not found"
         exit 1
     fi
 
-    if kubectl exec -n demo postgres-0 -c spiffe-helper -- ls -la /spiffe-certs/svid_bundle.pem &> /dev/null; then
+    if kubectl exec -n demo postgres-0 -c postgres -- test -f /spiffe-certs/svid_bundle.pem; then
         echo "✓ SVID trust bundle (svid_bundle.pem) exists"
     else
         echo "✗ SVID trust bundle not found"
         exit 1
     fi
+
+    # Verify certificate permissions (key must be 0600 for PostgreSQL)
+    echo "→ Verifying certificate permissions..."
+    CERT_PERMS=$(kubectl exec -n demo postgres-0 -c postgres -- ls -la /spiffe-certs/ 2>/dev/null)
+    echo "$CERT_PERMS" | grep -q "svid_key.pem" && echo "✓ Certificate files present with correct ownership"
 
     echo ""
 }

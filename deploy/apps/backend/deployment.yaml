@@ -1,0 +1,190 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: demo
+  labels:
+    app: backend
+    pattern: dual # Both Envoy SDS and spiffe-helper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        pattern: dual
+    spec:
+      serviceAccountName: backend
+      
+      # Native sidecar (K8s 1.28+): spiffe-helper starts before main containers
+      initContainers:
+      - name: spiffe-helper
+        image: ghcr.io/spiffe/spiffe-helper:0.8.0
+        imagePullPolicy: IfNotPresent
+        args:
+        - "-config"
+        - "/etc/spiffe-helper/spiffe-helper.conf"
+        volumeMounts:
+        - name: spiffe-certs
+          mountPath: /spiffe-certs
+        - name: spiffe-helper-config
+          mountPath: /etc/spiffe-helper
+          readOnly: true
+        - name: spire-agent-socket
+          mountPath: /run/spire/agent-sockets
+          readOnly: true
+        # Run as backend user for correct file ownership
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          runAsNonRoot: true
+        restartPolicy: Always # Native sidecar - keeps running
+      
+      containers:
+      # Backend application (Pattern 2: reads client certs for PostgreSQL)
+      - name: backend
+        image: backend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 9090
+          protocol: TCP
+        env:
+        # Logging configuration (FR-019)
+        - name: LOG_FORMAT
+          value: "json"
+        - name: LOG_LEVEL
+          value: "info"
+        # Database connection
+        - name: DB_HOST
+          value: "postgres.demo.svc.cluster.local"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_USER
+          value: "demouser"
+        - name: DB_PASSWORD
+          value: "demopass"
+        - name: DB_NAME
+          value: "demo"
+        # Connection pool settings (FR-020)
+        - name: DB_MAX_OPEN_CONNS
+          value: "10"
+        - name: DB_MAX_IDLE_CONNS
+          value: "5"
+        - name: DB_CONN_MAX_LIFETIME
+          value: "2m"
+        # SPIFFE certificates (Pattern 2: spiffe-helper)
+        - name: SSL_CERT
+          value: "/spiffe-certs/svid.pem"
+        - name: SSL_KEY
+          value: "/spiffe-certs/svid_key.pem"
+        - name: SSL_ROOT_CA
+          value: "/spiffe-certs/svid_bundle.pem"
+        - name: SPIFFE_ID
+          value: "spiffe://example.org/ns/demo/sa/backend"
+        volumeMounts:
+        - name: spiffe-certs
+          mountPath: /spiffe-certs
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      
+      # Envoy sidecar (Pattern 1: inbound mTLS from frontend via SDS)
+      - name: envoy
+        image: envoyproxy/envoy:v1.29-latest
+        imagePullPolicy: IfNotPresent
+        args:
+        - "-c"
+        - "/etc/envoy/envoy.yaml"
+        - "--log-level"
+        - "info"
+        ports:
+        - name: envoy-http
+          containerPort: 8080
+          protocol: TCP
+        - name: envoy-admin
+          containerPort: 9901
+          protocol: TCP
+        volumeMounts:
+        - name: envoy-config
+          mountPath: /etc/envoy
+          readOnly: true
+        - name: spire-agent-socket
+          mountPath: /run/spire/agent-sockets
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /ready
+            port: 9901
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 9901
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+        securityContext:
+          runAsUser: 101
+          runAsGroup: 101
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      
+      volumes:
+      # Shared volume for SPIFFE certificates (Pattern 2)
+      - name: spiffe-certs
+        emptyDir:
+          medium: Memory
+      # spiffe-helper configuration
+      - name: spiffe-helper-config
+        configMap:
+          name: backend-spiffe-helper-config
+      # Envoy configuration (Pattern 1)
+      - name: envoy-config
+        configMap:
+          name: backend-envoy-config
+      # SPIRE agent socket (hostPath from DaemonSet)
+      - name: spire-agent-socket
+        hostPath:
+          path: /run/spire/agent-sockets
+          type: Directory

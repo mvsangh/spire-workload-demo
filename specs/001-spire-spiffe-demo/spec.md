@@ -18,6 +18,230 @@ This feature creates a production-style demonstration environment showcasing SPI
 4. Provide a simple but clear UI showing communication status between components
 5. Create a foundation for future extensions (OPA, federation, non-K8s workloads)
 
+---
+
+## Architecture Diagrams
+
+### System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              KIND CLUSTER (spire-demo)                          │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────┐   │
+│  │                        NAMESPACE: spire-system                           │   │
+│  │                                                                          │   │
+│  │   ┌─────────────────────┐         ┌─────────────────────┐               │   │
+│  │   │    SPIRE Server     │         │    SPIRE Agent      │               │   │
+│  │   │    (StatefulSet)    │◄───────►│    (DaemonSet)      │               │   │
+│  │   │                     │  gRPC   │                     │               │   │
+│  │   │  - Issues SVIDs     │         │  - Workload API     │               │   │
+│  │   │  - Registration     │         │  - Node attestation │               │   │
+│  │   │  - Trust bundle     │         │  - SVID delivery    │               │   │
+│  │   └─────────────────────┘         └──────────┬──────────┘               │   │
+│  │                                              │                           │   │
+│  └──────────────────────────────────────────────┼───────────────────────────┘   │
+│                                                 │ hostPath: /run/spire/agent-sockets
+│  ┌──────────────────────────────────────────────┼───────────────────────────┐   │
+│  │                        NAMESPACE: demo       │                           │   │
+│  │                                              ▼                           │   │
+│  │   ┌───────────────┐    ┌───────────────┐    ┌───────────────┐           │   │
+│  │   │   Frontend    │    │    Backend    │    │   PostgreSQL  │           │   │
+│  │   │     Pod       │    │      Pod      │    │      Pod      │           │   │
+│  │   │               │    │               │    │               │           │   │
+│  │   │  [Go App]     │    │  [Go App]     │    │  [Postgres]   │           │   │
+│  │   │  [Envoy]      │───►│  [Envoy]      │    │               │           │   │
+│  │   │               │    │  [spiffe-     │───►│  [spiffe-     │           │   │
+│  │   │               │    │   helper]     │    │   helper]     │           │   │
+│  │   └───────────────┘    └───────────────┘    └───────────────┘           │   │
+│  │                                                                          │   │
+│  │        Pattern 1: Envoy SDS          Pattern 2: spiffe-helper           │   │
+│  │        (Service-to-Service)          (Application-to-Database)          │   │
+│  │                                                                          │   │
+│  └──────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                    │
+                    │ NodePort 30080
+                    ▼
+              http://localhost:8080
+```
+
+### Pod Architecture (Detailed)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                 FRONTEND POD                                     │
+│  ServiceAccount: frontend                                                        │
+│  SPIFFE ID: spiffe://example.org/ns/demo/sa/frontend                            │
+│                                                                                  │
+│  ┌────────────────────────────────┐  ┌────────────────────────────────┐         │
+│  │         frontend (Go)          │  │           envoy                │         │
+│  │                                │  │                                │         │
+│  │  - Serves UI on :8080          │  │  - Outbound proxy on :8001    │         │
+│  │  - Calls backend via           │  │  - SDS for SVID certificates  │         │
+│  │    http://127.0.0.1:8001       │  │  - mTLS to backend:8080       │         │
+│  │                                │  │                                │         │
+│  └────────────────────────────────┘  └────────────────────────────────┘         │
+│                                              │                                   │
+│                                              │ mounts spire-agent-socket         │
+│                                              ▼                                   │
+│                                       /run/spire/agent-sockets                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                               │
+                                               │ Pattern 1: Envoy SDS (mTLS)
+                                               │ Frontend SVID ──► Backend SVID
+                                               ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                  BACKEND POD                                     │
+│  ServiceAccount: backend                                                         │
+│  SPIFFE ID: spiffe://example.org/ns/demo/sa/backend                             │
+│                                                                                  │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────────────┐       │
+│  │   backend (Go)   │  │      envoy       │  │     spiffe-helper        │       │
+│  │                  │  │                  │  │     (native sidecar)     │       │
+│  │  - API on :9090  │  │  - Inbound :8080 │  │                          │       │
+│  │  - Reads certs   │  │  - SDS for SVID  │  │  - Fetches backend SVID  │       │
+│  │    from          │  │  - RBAC filter:  │  │  - Writes to:            │       │
+│  │    /spiffe-certs │  │    allows only   │  │    /spiffe-certs/        │       │
+│  │  - Connects to   │  │    frontend      │  │      svid.pem            │       │
+│  │    PostgreSQL    │  │    SPIFFE ID     │  │      svid_key.pem        │       │
+│  │    with client   │  │                  │  │      svid_bundle.pem     │       │
+│  │    certs         │  │                  │  │                          │       │
+│  └────────┬─────────┘  └──────────────────┘  └────────────┬─────────────┘       │
+│           │                                               │                      │
+│           │ reads                              writes     │                      │
+│           └──────────────► /spiffe-certs ◄────────────────┘                      │
+│                            (emptyDir)                                            │
+│                                                                                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                               │
+                                               │ Pattern 2: spiffe-helper (mTLS)
+                                               │ Backend client cert ──► PostgreSQL
+                                               ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                                POSTGRESQL POD                                    │
+│  ServiceAccount: postgres                                                        │
+│  SPIFFE ID: spiffe://example.org/ns/demo/sa/postgres                            │
+│                                                                                  │
+│  ┌────────────────────────────────────┐  ┌──────────────────────────────┐       │
+│  │          postgres                  │  │       spiffe-helper          │       │
+│  │                                    │  │       (native sidecar)       │       │
+│  │  - Database on :5432               │  │                              │       │
+│  │  - SSL enabled                     │  │  - Fetches postgres SVID     │       │
+│  │  - Uses SVID as server cert:       │  │  - Writes to:                │       │
+│  │    ssl_cert_file=/spiffe-certs/    │  │    /spiffe-certs/            │       │
+│  │      svid.pem                      │  │      svid.pem                │       │
+│  │    ssl_key_file=/spiffe-certs/     │  │      svid_key.pem            │       │
+│  │      svid_key.pem                  │  │      svid_bundle.pem         │       │
+│  │    ssl_ca_file=/spiffe-certs/      │  │                              │       │
+│  │      svid_bundle.pem               │  │  - Runs as postgres user     │       │
+│  │                                    │  │    (UID 999) for correct     │       │
+│  │  - pg_hba.conf: clientcert=verify-ca    file ownership              │       │
+│  │    (verifies backend SPIFFE ID)   │  │                              │       │
+│  │                                    │  │                              │       │
+│  └────────────────┬───────────────────┘  └──────────────┬───────────────┘       │
+│                   │                                      │                       │
+│                   │ reads                     writes     │                       │
+│                   └──────────► /spiffe-certs ◄───────────┘                       │
+│                                (emptyDir)                                        │
+│                                                                                  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### mTLS Flow Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                              mTLS COMMUNICATION FLOW                             │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+                           PATTERN 1: Envoy SDS
+                     (Service-to-Service Communication)
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                                                                     │
+    │   Frontend App                                      Backend App     │
+    │       │                                                 ▲           │
+    │       │ HTTP :8001                                      │           │
+    │       ▼                                                 │           │
+    │   ┌───────────┐                                   ┌───────────┐     │
+    │   │  Envoy    │────────── mTLS (SVID) ──────────►│  Envoy    │     │
+    │   │ (client)  │                                   │ (server)  │     │
+    │   └─────┬─────┘                                   └─────┬─────┘     │
+    │         │                                               │           │
+    │         │ SDS API                                 SDS API           │
+    │         ▼                                               ▼           │
+    │   ┌───────────────────────────────────────────────────────────┐     │
+    │   │                      SPIRE Agent                          │     │
+    │   │  - Delivers SVIDs via SDS (Secret Discovery Service)      │     │
+    │   │  - Auto-rotates certificates                              │     │
+    │   │  - No file I/O needed                                     │     │
+    │   └───────────────────────────────────────────────────────────┘     │
+    │                                                                     │
+    │   RBAC Enforcement:                                                 │
+    │   Backend Envoy only accepts connections from:                      │
+    │     spiffe://example.org/ns/demo/sa/frontend                        │
+    │                                                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+
+
+                           PATTERN 2: spiffe-helper
+                     (Application-to-Database Communication)
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                                                                     │
+    │   Backend App                                      PostgreSQL       │
+    │       │                                                 ▲           │
+    │       │ reads client cert                               │           │
+    │       ▼                                                 │           │
+    │   /spiffe-certs/                               /spiffe-certs/       │
+    │     svid.pem ─────────── mTLS (SVID) ───────────► svid.pem         │
+    │     svid_key.pem        (PostgreSQL SSL)          svid_key.pem      │
+    │     svid_bundle.pem                               svid_bundle.pem   │
+    │       ▲                                                 ▲           │
+    │       │ writes                                    writes │           │
+    │   ┌───────────┐                                   ┌───────────┐     │
+    │   │  spiffe-  │                                   │  spiffe-  │     │
+    │   │  helper   │                                   │  helper   │     │
+    │   └─────┬─────┘                                   └─────┬─────┘     │
+    │         │                                               │           │
+    │         │ Workload API                       Workload API           │
+    │         ▼                                               ▼           │
+    │   ┌───────────────────────────────────────────────────────────┐     │
+    │   │                      SPIRE Agent                          │     │
+    │   │  - Delivers SVIDs via Workload API                        │     │
+    │   │  - spiffe-helper writes to files                          │     │
+    │   │  - Files auto-rotated by spiffe-helper                    │     │
+    │   └───────────────────────────────────────────────────────────┘     │
+    │                                                                     │
+    │   Client Certificate Verification:                                  │
+    │   PostgreSQL pg_hba.conf requires clientcert=verify-ca              │
+    │   Validates backend SPIFFE ID in certificate SAN                    │
+    │                                                                     │
+    └─────────────────────────────────────────────────────────────────────┘
+```
+
+### SPIFFE ID Assignments
+
+| Workload | Service Account | SPIFFE ID | Pattern |
+|----------|-----------------|-----------|---------|
+| Frontend | `frontend` | `spiffe://example.org/ns/demo/sa/frontend` | Pattern 1 (Envoy SDS) |
+| Backend | `backend` | `spiffe://example.org/ns/demo/sa/backend` | Both Patterns |
+| PostgreSQL | `postgres` | `spiffe://example.org/ns/demo/sa/postgres` | Pattern 2 (spiffe-helper) |
+
+### Pattern Comparison
+
+| Aspect | Pattern 1: Envoy SDS | Pattern 2: spiffe-helper |
+|--------|---------------------|-------------------------|
+| **Use Case** | Service-to-service (HTTP/gRPC) | App-to-database (native protocols) |
+| **Certificate Delivery** | SDS API (in-memory) | File-based (/spiffe-certs/) |
+| **Application Changes** | Zero code changes | Read cert files in connection string |
+| **Protocol Support** | HTTP/1.1, HTTP/2, gRPC | Any protocol (PostgreSQL, MySQL, etc.) |
+| **RBAC/Policy** | Envoy RBAC filter | Database-level (pg_hba.conf) |
+| **Rotation** | Automatic via SDS | Automatic via file updates |
+| **Best For** | Service mesh patterns | Legacy apps, databases |
+
+---
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Happy Path Demo Flow (Priority: P1)
@@ -88,7 +312,9 @@ A developer or presenter can deploy the entire demo environment with minimal man
 
 ### Edge Cases
 
-- What happens when SPIRE server is temporarily unavailable? The system should use cached SVIDs until they expire.
+- What happens when SPIRE server is temporarily unavailable? The system gracefully degrades by continuing to use cached SVIDs until they expire (default 1 hour TTL), allowing existing mTLS connections to continue functioning. New workload bootstrapping will fail during this period.
+- What happens during concurrent SVID rotation across multiple workloads? Each workload independently rotates certificates via their respective patterns (Envoy SDS for Pattern 1, spiffe-helper file updates for Pattern 2) without coordination requirements. Existing connections remain stable using current certificates while new connections use rotated certificates.
+- What happens when SPIRE server restarts during an active demo? Workloads continue operating with cached SVIDs. SPIRE agents automatically reconnect to the server, and certificate rotation resumes once the server is available.
 - What happens when a workload's service account doesn't match any registration entry? The workload should fail to obtain an SVID and connections should fail.
 - What happens when Postgres is unavailable? The backend should return an appropriate error that the frontend displays.
 - What happens when Envoy sidecar fails to start? The pod should not become Ready (liveness/readiness probes should detect this).
@@ -117,6 +343,8 @@ A developer or presenter can deploy the entire demo environment with minimal man
 - **FR-016**: Frontend-to-backend communication MUST use HTTP/JSON protocol
 - **FR-017**: PostgreSQL pod MUST include spiffe-helper sidecar that fetches SVIDs from SPIRE agent and writes certificate files to shared volume
 - **FR-018**: Backend pod MUST include spiffe-helper sidecar that fetches SVIDs and writes certificate files for PostgreSQL client authentication
+- **FR-019**: All services MUST emit structured log messages with pattern identifiers (Pattern 1: Envoy SDS, Pattern 2: spiffe-helper) showing SPIFFE IDs, connection success/failure, and certificate rotation events for demo observation
+- **FR-020**: Backend service MUST implement PostgreSQL connection pooling with maximum 10 connections, 5 idle connections, and 2-minute connection lifetime to demonstrate production patterns within laptop resource constraints
 
 ### Key Entities
 
@@ -141,6 +369,7 @@ A developer or presenter can deploy the entire demo environment with minimal man
 - **SC-007**: Demo runs successfully on machines with 8GB RAM and 4 CPU cores (typical developer laptop)
 - **SC-008**: Backend correctly returns order data from PostgreSQL when all connections succeed
 - **SC-009**: PostgreSQL directly verifies backend SPIFFE ID from SVID certificates (not through Envoy proxy)
+- **SC-010**: Demo presenters can verify mTLS handshakes and SPIFFE ID validation by inspecting structured logs that clearly distinguish between Pattern 1 (Envoy SDS) and Pattern 2 (spiffe-helper) operations
 
 ## Clarifications
 
@@ -151,6 +380,12 @@ A developer or presenter can deploy the entire demo environment with minimal man
 ### Session 2025-12-19
 
 - Q: How should PostgreSQL integrate with SPIFFE? → A: Use spiffe-helper sidecar to write SVID certificates directly for PostgreSQL to verify (not Envoy proxy)
+
+### Session 2025-12-20
+
+- Q: How should the demo provide observability for mTLS handshakes and certificate rotation verification during live presentations? → A: Structured logging with pattern labels
+- Q: What happens when multiple concurrent operations occur (e.g., SPIRE server restart during active demo, simultaneous SVID rotation)? → A: Graceful degradation with cached SVIDs
+- Q: What database connection management strategy should the backend use for PostgreSQL connections? → A: Simple connection pool with demo-appropriate limits
 
 ## Assumptions
 
@@ -163,6 +398,8 @@ A developer or presenter can deploy the entire demo environment with minimal man
 - SQLite is acceptable for SPIRE server datastore in demo environment (not production-grade)
 - Single kind cluster is sufficient for v1 (federation is a future enhancement)
 - No external PKI/CA integration required for v1 (self-signed SPIRE root)
+- PostgreSQL connection pool settings (max 10 connections, 5 idle) are sufficient for demo load (single-user, sequential requests)
+- Demo does not require high-concurrency testing (connection pool sized for demonstration, not load testing)
 
 ## Out of Scope (v1)
 

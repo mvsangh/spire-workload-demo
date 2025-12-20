@@ -24,6 +24,8 @@ coverage.out
 # Binaries for programs and plugins
 cmd/frontend/frontend
 cmd/backend/backend
+/backend
+/frontend
 
 # IDE / Editors
 .idea/
@@ -116,3 +118,9 @@ docs/_build/
 local/
 *.local.yaml
 *.local.yml
+
+# Factory AI / Codex / IDE assistants
+.codex/
+.factory/
+.cursor/
+.continue/
